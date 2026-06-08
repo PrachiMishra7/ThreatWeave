@@ -1,0 +1,8 @@
+{
+  "name": "ThreatWeave",
+  "description": "AI-Powered Cyber Threat Intelligence Correlation Engine",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
