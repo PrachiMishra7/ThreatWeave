@@ -1,20 +1,29 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# ThreatWeave
 
-# Run and deploy your AI Studio app
-
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/0c67611a-8ea4-4dc6-9822-05c95652ad2e
+ThreatWeave is an intelligent security operations tool that leverages AI to parse, correlate, and analyze raw security logs and alerts to identify coordinated campaigns.
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
-
+**Prerequisites:** Node.js
 
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+   ```bash
+   npm install
+   ```
+
+2. Configure Environment:
+   Set your `GEMINI_API_KEY` in `.env.local` or `.env`:
+   ```bash
+   GEMINI_API_KEY="your_api_key_here"
+   ```
+
+3. Run in development mode:
+   ```bash
+   npm run dev
+   ```
+
+4. Build and run for production:
+   ```bash
+   npm run build
+   npm start
+   ```
