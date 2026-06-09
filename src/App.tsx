@@ -89,44 +89,34 @@ export default function App() {
     setCustomLogsText(logScenarios.ransomware);
   }, []);
 
-  // Simulated live SIEM logs stream appending randomly
+  // Real-time SIEM logs stream via SSE
   useEffect(() => {
     if (!isStreamingEnabled) return;
 
-    const streamInterval = setInterval(() => {
-      setStreamCounter((prev) => prev + 1);
-      // Construct a random firewall or process audit log line
-      const sources = ["Firewall", "EDR", "SIEM", "Active Directory", "DNS Log", "Phishing Gateway"];
-      const severities = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
-      const hosts = ["DB-PROD-SERVER", "WS-JENS-DESKTOP", "CLOUD-ROUTER-04", "FIN-BILLING-VM", "HR-CORE-PORTAL"];
-      const randSource = sources[Math.floor(Math.random() * sources.length)];
-      const randSeverity = severities[Math.floor(Math.random() * severities.length)] as any;
-      const randHost = hosts[Math.floor(Math.random() * hosts.length)];
+    const eventSource = new EventSource("/api/stream/logs");
 
-      const randomLogs = [
-        {
-          timestamp: new Date().toISOString(),
-          sourceSystem: randSource,
-          severity: randSeverity,
-          title: `Telemetry event on ${randHost}`,
-          description: `Unexpected network connection burst or active registry state change originating from ${randHost}. Check system context.`,
-          iocs: `host=${randHost}.local, source_port=${Math.floor(Math.random() * 60000 + 1024)}`
-        },
-        {
-          timestamp: new Date().toISOString(),
-          sourceSystem: randSource,
-          severity: randSeverity,
-          title: `Privileged account monitoring warning`,
-          description: `Access token evaluated under normal thresholds but with foreign credential caching signatures.`,
-          iocs: `user=svc_backup_daemon, asset=${randHost}`
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.status === "connected") {
+          console.log("SSE stream connected.");
+          return;
         }
-      ];
+        setStreamCounter((prev) => prev + 1);
+        setLiveStream((prev) => [data, ...prev.slice(0, 15)]);
+      } catch (err) {
+        console.error("Failed to parse SSE message", err);
+      }
+    };
 
-      const newLog = randomLogs[Math.floor(Math.random() * randomLogs.length)];
-      setLiveStream((prev) => [newLog, ...prev.slice(0, 15)]);
-    }, 4500);
+    eventSource.onerror = (err) => {
+      console.error("SSE stream error", err);
+      eventSource.close();
+    };
 
-    return () => clearInterval(streamInterval);
+    return () => {
+      eventSource.close();
+    };
   }, [isStreamingEnabled]);
 
   // Handle live Gemini Cyber Correlation API
@@ -389,15 +379,15 @@ export default function App() {
           <div className="flex flex-wrap items-center gap-4 text-xs">
             <div className="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-full border border-slate-800">
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                {isStreamingEnabled && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${isStreamingEnabled ? "bg-emerald-500" : "bg-slate-600"}`}></span>
               </span>
               <span className="text-slate-400">Stream Status:</span>
               <button 
                 onClick={() => setIsStreamingEnabled(!isStreamingEnabled)}
                 className="text-white hover:text-teal-400 font-mono font-medium focus:outline-none"
               >
-                {isStreamingEnabled ? "LIVE" : "PAUSED"}
+                {isStreamingEnabled ? "LISTENING" : "OFFLINE"}
               </button>
             </div>
 
@@ -526,8 +516,12 @@ export default function App() {
                   </span>
                 </div>
 
-                {/* Simulated Ingest List container */}
-                <div className="flex-1 mt-3 overflow-y-auto max-h-[380px] flex flex-col gap-2 pr-1 text-xs">
+                <div className="text-[10px] text-slate-500 bg-slate-950/40 p-2.5 rounded border border-slate-800/50 leading-relaxed font-mono mt-3 mb-2">
+                  To ingest a live log (PowerShell), run:<br/>
+                  <code className="text-teal-400 select-all">Invoke-RestMethod -Uri "http://localhost:3001/api/ingest" -Method Post -ContentType "application/json" -Body '{`{"title": "Test Alert", "severity": "HIGH", "sourceSystem": "Firewall", "description": "Suspicious request", "iocs": "192.168.1.100"}`}'</code>
+                </div>
+                {/* Real-time Ingest List container */}
+                <div className="flex-1 overflow-y-auto max-h-[380px] flex flex-col gap-2 pr-1 text-xs">
                   {liveStream.map((log, index) => {
                     const isCritical = log.severity === "CRITICAL" || log.severity === "HIGH";
                     return (
