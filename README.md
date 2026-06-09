@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <div align="center">
 <img width="120" height="120" alt="Shield Logo" src="https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/shield.svg" />
 </div>
@@ -7,9 +8,15 @@
 **Multi-Resource Cyber Threat Intelligence Correlation Engine**
 
 ThreatWeave is an advanced, AI-powered security operations dashboard built to help SOC (Security Operations Center) analysts triage, correlate, and respond to cyber threats at machine speed. By leveraging the **Google Gemini AI API**, ThreatWeave ingests fragmented telemetry from firewalls, EDRs, active directories, and phishing gateways, and weaves them together into cohesive, explainable attack campaigns.
+=======
+# ThreatWeave
+
+ThreatWeave is an intelligent security operations tool that leverages AI to parse, correlate, and analyze raw security logs and alerts to identify coordinated campaigns.
+>>>>>>> main
 
 ## ✨ Core Features & What Works Today
 
+<<<<<<< HEAD
 ### 1. 🧠 AI Threat Ingest Hub & Correlation Engine
 * **Raw SIEM Log Parsing:** Paste raw, disjointed firewall alerts, syslog transcripts, or AWS CloudTrail logs directly into the engine.
 * **Gemini-Powered Intelligence:** The backend uses the Gemini 3.5 Flash model to extract structured security incidents and hunt for overlapping techniques, IP addresses, hashes, or temporal linkages to identify coordinated multi-stage attacks.
@@ -61,3 +68,28 @@ Invoke-RestMethod -Uri "http://localhost:3001/api/ingest" -Method Post -ContentT
 * **Frontend:** React, TailwindCSS v4, Vite, Lucide Icons
 * **Backend:** Node.js, Express, Server-Sent Events (SSE)
 * **AI:** `@google/genai` SDK (Gemini 3.5 Flash)
+=======
+**Prerequisites:** Node.js
+
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+2. Configure Environment:
+   Set your `GEMINI_API_KEY` in `.env.local` or `.env`:
+   ```bash
+   GEMINI_API_KEY="your_api_key_here"
+   ```
+
+3. Run in development mode:
+   ```bash
+   npm run dev
+   ```
+
+4. Build and run for production:
+   ```bash
+   npm run build
+   npm start
+   ```
+>>>>>>> main
