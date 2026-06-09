@@ -5,12 +5,25 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
+import { EventEmitter } from "events";
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3001;
+
+// Global event emitter for log streaming
+const logEmitter = new EventEmitter();
 
 // Parse json bodies
 app.use(express.json({ limit: "10mb" }));
+
+// Handle JSON parsing errors so the server doesn't crash on bad inputs
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err instanceof SyntaxError && 'body' in err) {
+    console.error("JSON parsing error from client payload:", err.message);
+    return res.status(400).json({ error: "Invalid JSON payload format. Please check your quotes/escaping." });
+  }
+  next();
+});
 
 // Helper to initialize Gemini safely
 const getGeminiClient = () => {
@@ -35,6 +48,53 @@ app.get("/api/health", (req, res) => {
     status: "ok",
     hasApiKey: hasKey,
     environment: process.env.NODE_ENV || "development"
+  });
+});
+
+// Endpoint to ingest raw logs
+app.post("/api/ingest", (req, res) => {
+  try {
+    const logData = req.body;
+    if (!logData || Object.keys(logData).length === 0) {
+      return res.status(400).json({ error: "Empty log payload." });
+    }
+    
+    // Assign default structure
+    const newLog = {
+      timestamp: logData.timestamp || new Date().toISOString(),
+      sourceSystem: logData.sourceSystem || "API Webhook",
+      severity: logData.severity || "MEDIUM",
+      title: logData.title || "External System Alert",
+      description: logData.description || JSON.stringify(logData),
+      iocs: logData.iocs || "N/A"
+    };
+
+    // Emit event to connected clients
+    logEmitter.emit("new_log", newLog);
+
+    res.status(201).json({ status: "success", message: "Log ingested.", log: newLog });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint for SSE stream
+app.get("/api/stream/logs", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  // Send an initial connected ping
+  res.write(`data: ${JSON.stringify({ status: "connected" })}\n\n`);
+
+  const onNewLog = (log: any) => {
+    res.write(`data: ${JSON.stringify(log)}\n\n`);
+  };
+
+  logEmitter.on("new_log", onNewLog);
+
+  req.on("close", () => {
+    logEmitter.off("new_log", onNewLog);
   });
 });
 
