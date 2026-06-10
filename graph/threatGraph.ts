@@ -7,7 +7,7 @@ export async function saveThreatGraph(data: any) {
     const campaignName =
       data.campaignProposedName || "Unknown Campaign";
 
-    // Create campaign node
+    // Create Campaign Node
     await session.run(
       `
       MERGE (c:Campaign {name: $campaignName})
@@ -15,7 +15,7 @@ export async function saveThreatGraph(data: any) {
       { campaignName }
     );
 
-    // Create alert nodes
+    // Create Alert Nodes
     if (data.extractedAlerts) {
       for (const alert of data.extractedAlerts) {
         await session.run(
@@ -37,10 +37,33 @@ export async function saveThreatGraph(data: any) {
             sourceSystem: alert.sourceSystem,
           }
         );
+
+        // Create IOC Nodes
+        if (alert.iocs) {
+          for (const ioc of alert.iocs) {
+            await session.run(
+              `
+              MATCH (a:Alert {id: $alertId})
+
+              MERGE (i:IOC {
+                type: $type,
+                value: $value
+              })
+
+              MERGE (a)-[:USES]->(i)
+              `,
+              {
+                alertId: alert.id,
+                type: ioc.type,
+                value: ioc.value,
+              }
+            );
+          }
+        }
       }
     }
 
-    // Create correlation edges
+    // Create Correlation Relationships
     if (data.correlations) {
       for (const corr of data.correlations) {
         await session.run(
@@ -66,6 +89,7 @@ export async function saveThreatGraph(data: any) {
     await session.close();
   }
 }
+
 export async function getThreatGraph() {
   const session = driver.session();
 
@@ -77,7 +101,7 @@ export async function getThreatGraph() {
     `);
 
     const nodes = new Map();
-    const edges = [];
+    const edges: any[] = [];
 
     result.records.forEach((record) => {
       const n = record.get("n");
@@ -90,6 +114,7 @@ export async function getThreatGraph() {
           label:
             n.properties.name ||
             n.properties.title ||
+            n.properties.value ||
             n.properties.id,
           type: n.labels[0],
           properties: n.properties,
@@ -102,6 +127,7 @@ export async function getThreatGraph() {
           label:
             m.properties.name ||
             m.properties.title ||
+            m.properties.value ||
             m.properties.id,
           type: m.labels[0],
           properties: m.properties,
