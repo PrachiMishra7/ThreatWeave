@@ -152,3 +152,31 @@ export async function getThreatGraph() {
     await session.close();
   }
 }
+
+export async function getNodes() {
+  const session = driver.session();
+
+  try {
+    const result = await session.run(`
+      MATCH (n)
+      RETURN n
+    `);
+
+    return result.records.map((record) => {
+      const n = record.get("n");
+
+      return {
+        id: n.elementId,
+        type: n.labels[0],
+        label:
+          n.properties.name ||
+          n.properties.title ||
+          n.properties.value ||
+          n.properties.id,
+        properties: n.properties,
+      };
+    });
+  } finally {
+    await session.close();
+  }
+}
