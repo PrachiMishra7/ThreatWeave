@@ -6,6 +6,10 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import { EventEmitter } from "events";
+import {
+  saveThreatGraph,
+  getThreatGraph
+} from "./graph/threatGraph";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -214,7 +218,12 @@ app.post("/api/gemini/correlate", async (req, res) => {
     });
 
     const textOutput = response.text || "{}";
-    res.json(JSON.parse(textOutput));
+
+    const result = JSON.parse(textOutput);
+
+    await saveThreatGraph(result);
+
+    res.json(result);
   } catch (error: any) {
     console.error("AI correlation error:", error);
     res.status(500).json({ error: error.message || "An error occurred during log correlation modeling." });
@@ -241,6 +250,16 @@ async function initServer() {
     console.log(`ThreatWeave server booting... listening at http://localhost:${PORT}`);
   });
 }
+app.get("/api/graph", async (req, res) => {
+  try {
+    const graph = await getThreatGraph();
+    res.json(graph);
+  } catch (err: any) {
+    res.status(500).json({
+      error: err.message
+    });
+  }
+});
 
 initServer().catch((err) => {
   console.error("Server startup crash:", err);
