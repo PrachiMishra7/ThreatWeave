@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/layout/Layout";
+import Dashboard from "./pages/Dashboard";
 
 // Temporary placeholder pages
 const Placeholder = ({ title }: { title: string }) => (
@@ -14,7 +15,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<Placeholder title="Dashboard" />} />
+          <Route path="dashboard" element={<Dashboard />} />
           <Route path="alerts" element={<Placeholder title="Live Alerts" />} />
           <Route path="campaigns" element={<Placeholder title="Campaigns" />} />
           <Route path="graph" element={<Placeholder title="Graph Explorer" />} />
