@@ -1,8 +1,27 @@
 import { useState } from "react";
 import { AlertTriangle, Layers, Activity, Users, Terminal } from "lucide-react";
+import { 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
+  PieChart, Pie, Cell
+} from "recharts";
 import { StatCard } from "../components/ui/StatCard";
 import { SeverityBadge } from "../components/ui/SeverityBadge";
 import { mockAlerts, mockCampaigns } from "../mockData";
+
+// Mock data for charts
+const volumeData = [
+  { time: '00:00', alerts: 12 }, { time: '04:00', alerts: 19 },
+  { time: '08:00', alerts: 45 }, { time: '12:00', alerts: 82 },
+  { time: '16:00', alerts: 65 }, { time: '20:00', alerts: 30 },
+  { time: '24:00', alerts: 15 }
+];
+
+const severityData = [
+  { name: 'CRITICAL', value: 12, color: '#f43f5e' }, // rose-500
+  { name: 'HIGH', value: 45, color: '#f59e0b' },     // amber-500
+  { name: 'MEDIUM', value: 89, color: '#14b8a6' },   // teal-500
+  { name: 'LOW', value: 134, color: '#64748b' }      // slate-500
+];
 
 export default function Dashboard() {
   const [activeCampaignId, setActiveCampaignId] = useState<string>(mockCampaigns[0].id);
@@ -47,6 +66,62 @@ export default function Dashboard() {
         />
       </div>
 
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Alert Volume Trend (Line Chart) */}
+        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col h-[300px]">
+          <h3 className="font-semibold text-sm text-slate-200 mb-4">Alert Volume (24h)</h3>
+          <div className="flex-1 w-full min-h-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={volumeData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                <XAxis dataKey="time" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+                <RechartsTooltip 
+                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc', borderRadius: '8px' }}
+                  itemStyle={{ color: '#14b8a6' }}
+                />
+                <Line type="monotone" dataKey="alerts" stroke="#14b8a6" strokeWidth={3} dot={{ r: 4, fill: '#0f172a', strokeWidth: 2 }} activeDot={{ r: 6 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Severity Distribution (Donut Chart) */}
+        <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col h-[300px]">
+          <h3 className="font-semibold text-sm text-slate-200 mb-4">Alert Severity Distribution</h3>
+          <div className="flex-1 w-full min-h-0 flex items-center justify-center relative">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={severityData}
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                  stroke="none"
+                >
+                  {severityData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <RechartsTooltip 
+                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc', borderRadius: '8px' }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            {/* Center Label */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-2xl font-bold text-white">280</span>
+              <span className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Total</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Bottom Row: Campaigns & Details */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Left Column: Campaigns & Alert Feed */}
