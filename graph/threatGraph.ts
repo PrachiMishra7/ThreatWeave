@@ -2,13 +2,25 @@ import driver from "./neo4j";
 
 export async function saveThreatGraph(data: any) {
   const session = driver.session();
+try {
+ const campaignName =
+  data.campaignProposedName ||
+  data.threat_campaign?.name ||
+  "Unknown Campaign";
 
-  try {
-    const campaignName =
-      data.campaignProposedName || "Unknown Campaign";
+console.log("CAMPAIGN NAME:", campaignName);
+console.log("DATA:", JSON.stringify(data, null, 2));
 
-    // Create Campaign Node
-    await session.run(
+  const threatActor =
+    data.threatActor || null;
+const alerts =
+  data.extractedAlerts ||
+  data.parsed_alerts ||
+  data.security_incidents ||
+  [];
+  console.log("ALERT COUNT:", alerts.length);
+  // Create Campaign Node
+  await session.run(
       `
       MERGE (c:Campaign {name: $campaignName})
       `,
@@ -16,8 +28,9 @@ export async function saveThreatGraph(data: any) {
     );
 
     // Create Alert Nodes
-    if (data.extractedAlerts) {
-      for (const alert of data.extractedAlerts) {
+    if (alerts.length > 0) {
+      for (const alert of alerts) {
+  console.log("CREATING ALERT:", alert);
         await session.run(
           `
           MERGE (a:Alert {id: $id})
@@ -31,22 +44,50 @@ export async function saveThreatGraph(data: any) {
           `,
           {
             campaignName,
-            id: alert.id,
-            title: alert.title,
-            severity: alert.severity,
-            sourceSystem: alert.sourceSystem,
+           id: alert.id || alert.alert_id,
+            title: alert.title || alert.event_type,
+            severity: alert.severity || "MEDIUM",
+            sourceSystem: alert.sourceSystem || "Groq",
           }
         );
+        if (threatActor) {
+  await session.run(
+    `
+    MERGE (t:ThreatActor {
+      name: $threatActor
+    })
+
+    WITH t
+
+    MATCH (c:Campaign {
+      name: $campaignName
+    })
+
+    MERGE (t)-[:ATTRIBUTED_TO]->(c)
+    `,
+    {
+      threatActor,
+      campaignName,
+    }
+  );
+}
 
         // Create IOC Nodes
+               // Create IOC Nodes
         if (alert.iocs) {
-          for (const ioc of alert.iocs) {
-            await session.run(
+  for (const ioc of alert.iocs) {
+    const label =
+      ["IP", "Domain", "User", "Hash"].includes(ioc.type)
+        ? ioc.type
+        : "IOC";
+
+    console.log("Creating node:", label, ioc.value);
+
+    await session.run(
               `
               MATCH (a:Alert {id: $alertId})
 
-              MERGE (i:IOC {
-                type: $type,
+              MERGE (i:${label} {
                 value: $value
               })
 
@@ -54,14 +95,14 @@ export async function saveThreatGraph(data: any) {
               `,
               {
                 alertId: alert.id,
-                type: ioc.type,
                 value: ioc.value,
               }
             );
           }
         }
-      }
     }
+
+
 
     // Create Correlation Relationships
     if (data.correlations) {
@@ -83,7 +124,7 @@ export async function saveThreatGraph(data: any) {
         );
       }
     }
-
+ }
     console.log("Threat graph saved");
   } finally {
     await session.close();
@@ -174,6 +215,108 @@ export async function getNodes() {
           n.properties.value ||
           n.properties.id,
         properties: n.properties,
+      };
+    });
+  } finally {
+    await session.close();
+  }
+}
+export async function getCampaigns() {
+  const session = driver.session();
+
+  try {
+    const result = await session.run(`
+      MATCH (c:Campaign)
+      RETURN c
+    `);
+
+    return result.records.map((record) => {
+      const c = record.get("c");
+
+      return {
+        id: c.elementId,
+        name: c.properties.name,
+      };
+    });
+  } finally {
+    await session.close();
+  }
+}
+
+export async function getCampaignByName(name: string) {
+  const session = driver.session();
+
+  try {
+    const result = await session.run(
+      `
+      MATCH (c:Campaign {name: $name})-[:CONTAINS]->(a:Alert)
+      RETURN c, collect(a) AS alerts
+      `,
+      { name }
+    );
+
+    if (result.records.length === 0) {
+      return null;
+    }
+
+    const record = result.records[0];
+    const campaign = record.get("c");
+    const alerts = record.get("alerts");
+
+    return {
+      name: campaign.properties.name,
+      alerts: alerts.map((a: any) => ({
+        id: a.properties.id,
+        title: a.properties.title,
+        severity: a.properties.severity,
+      })),
+    };
+  } finally {
+    await session.close();
+  }
+}
+export async function getAlerts() {
+  const session = driver.session();
+
+  try {
+    const result = await session.run(`
+      MATCH (a:Alert)
+      RETURN a
+    `);
+
+    return result.records.map((record) => {
+      const a = record.get("a");
+
+      return {
+        id: a.properties.id,
+        title: a.properties.title,
+        severity: a.properties.severity,
+        sourceSystem: a.properties.sourceSystem,
+      };
+    });
+  } finally {
+    await session.close();
+  }
+}
+export async function getLiveFeed() {
+  const session = driver.session();
+
+  try {
+    const result = await session.run(`
+      MATCH (a:Alert)
+      RETURN a
+      ORDER BY a.id DESC
+      LIMIT 20
+    `);
+
+    return result.records.map((record) => {
+      const a = record.get("a");
+
+      return {
+        id: a.properties.id,
+        title: a.properties.title,
+        severity: a.properties.severity,
+        sourceSystem: a.properties.sourceSystem,
       };
     });
   } finally {
