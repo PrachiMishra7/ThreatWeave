@@ -26,6 +26,30 @@ const alerts =
       `,
       { campaignName }
     );
+    const tactics =
+  data.threat_campaign?.mitre_attck_tactics || [];
+
+for (const tactic of tactics) {
+
+  const tacticName =
+    typeof tactic === "string"
+      ? tactic
+      : tactic.tactic_name;
+
+  await session.run(
+    `
+    MATCH (c:Campaign {name: $campaignName})
+
+    MERGE (m:MitreTactic {name: $tacticName})
+
+    MERGE (c)-[:USES_TACTIC]->(m)
+    `,
+    {
+      campaignName,
+      tacticName,
+    }
+  );
+}
 
     // Create Alert Nodes
     if (alerts.length > 0) {
@@ -42,14 +66,99 @@ const alerts =
           MATCH (c:Campaign {name: $campaignName})
           MERGE (c)-[:CONTAINS]->(a)
           `,
-          {
-            campaignName,
-           id: alert.id || alert.alert_id,
-            title: alert.title || alert.event_type,
-            severity: alert.severity || "MEDIUM",
-            sourceSystem: alert.sourceSystem || "Groq",
-          }
+         {
+  campaignName,
+
+  id:
+    alert.id ||
+    alert.alert_id ||
+    alert.incident_id,
+
+  title:
+    alert.title ||
+    alert.event_type ||
+    alert.incident_type ||
+    "Unknown Alert",
+
+  severity: alert.severity || "MEDIUM",
+
+  sourceSystem:
+    alert.sourceSystem ||
+    alert.source_system ||
+    "Groq",
+}
         );
+    const ip =
+  alert.source_ip ||
+  alert.ip;
+
+if (ip) {
+  await session.run(
+    `
+    MERGE (i:IP {value: $value})
+
+    WITH i
+    MATCH (a:Alert {id: $alertId})
+
+    MERGE (a)-[:USES]->(i)
+    `,
+    {
+      value: ip,
+      alertId:
+        alert.id ||
+        alert.alert_id ||
+        alert.incident_id,
+    }
+  );
+}
+
+const domain =
+  alert.destination_url ||
+  alert.destination ||
+  alert.website;
+
+if (domain) {
+  await session.run(
+    `
+    MERGE (d:Domain {value: $value})
+
+    WITH d
+    MATCH (a:Alert {id: $alertId})
+
+    MERGE (a)-[:USES]->(d)
+    `,
+    {
+      value: domain,
+      alertId:
+        alert.id ||
+        alert.alert_id ||
+        alert.incident_id,
+    }
+  );
+}
+    /*
+const username =
+  alert.username ||
+  alert.destination_account ||
+  alert.source_account;
+
+if (username) {
+  await session.run(
+    `
+    MERGE (u:User {value: $value})
+
+    WITH u
+    MATCH (a:Alert {id: $alertId})
+
+    MERGE (a)-[:USES]->(u)
+    `,
+    {
+      value: username,
+      alertId: alert.id || alert.alert_id,
+    }
+  );
+}
+*/
         if (threatActor) {
   await session.run(
     `
