@@ -1,6 +1,9 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+// Bypass SSL certificate errors for local development (fixes UNABLE_TO_VERIFY_LEAF_SIGNATURE)
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -218,6 +221,37 @@ await saveThreatGraph(result);
     res.status(500).json({ error: error.message || "An error occurred during log correlation modeling." });
   }
 });
+
+// Endpoint for the Chatbot
+app.post("/api/chat", async (req, res) => {
+  try {
+    const ai = getGroqClient();
+
+    if (!ai) {
+      return res.status(500).json({
+        error: "Groq API key is missing."
+      });
+    }
+
+    const { messages } = req.body;
+    if (!messages || !Array.isArray(messages)) {
+      return res.status(400).json({ error: "Messages array is required." });
+    }
+
+    const response = await ai.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: messages,
+      temperature: 0.7
+    });
+
+    const textOutput = response.choices[0]?.message?.content || "";
+    res.json({ reply: textOutput });
+  } catch (error: any) {
+    console.error("Chat error:", error);
+    res.status(500).json({ error: error.message || "An error occurred during chat generation." });
+  }
+});
+
 app.get("/api/graph", async (req, res) => {
   try {
     const graph = await getThreatGraph();
