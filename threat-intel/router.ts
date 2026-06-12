@@ -16,7 +16,7 @@ import { checkIP } from "./sources/abuseipdb.js";
 import { lookupIndicator } from "./sources/otx.js";
 import { normalizeAndFilter } from "./normalizer.js";
 import type { ThreatIndicator, ThreatIndicatorParsed, IndicatorType } from "./schema.js";
-import { mockAlerts } from "../src/mockData.js";
+import { getAlertStore } from "../backend/alertStore.js";
 import { randomUUID } from "crypto";
 
 const router = Router();
@@ -135,9 +135,9 @@ router.get("/lookup", async (req: Request, res: Response) => {
       }
     }
 
-    // Step 3: Find related alerts from mockData for additional context
+    // Step 3: Find related alerts from the alert store for additional IOC context
     const lowerQuery = query.toLowerCase();
-    const relatedAlerts = mockAlerts
+    const relatedAlerts = getAlertStore()
       .filter(
         (a) =>
           a.iocs.some((ioc) => ioc.value.toLowerCase().includes(lowerQuery)) ||
