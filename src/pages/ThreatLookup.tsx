@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { Search, Hash, Globe, User, Terminal } from "lucide-react";
 import { mockAlerts } from "../mockData";
 import { SeverityBadge } from "../components/ui/SeverityBadge";
