@@ -1,4 +1,6 @@
 import { Severity, IOCType, SecurityAlert, AttackCampaign, ThreatActor, GraphNode, GraphEdge } from "./types";
+import { correlateAlerts } from "../backend/correlation/correlation_service";
+import { detectCampaign } from "../backend/correlation/campaign_engine";
 
 export const mockThreatActors: ThreatActor[] = [
   {
@@ -204,55 +206,80 @@ export const mockAlerts: SecurityAlert[] = [
   }
 ];
 
+// Dynamically partition and correlate campaigns
+const shadowLockAlerts = mockAlerts.filter(a => {
+  const text = (a.title + " " + a.description).toLowerCase();
+  return text.includes("phishing") || text.includes("powershell") || text.includes("lsass") || text.includes("lateral") || text.includes("smb") || text.includes("winrm") || text.includes("rename") || text.includes("ryuk") || text.includes("conti");
+});
+
+const arcticRiftAlerts = mockAlerts.filter(a => {
+  const text = (a.title + " " + a.description).toLowerCase();
+  return text.includes("cloud") || text.includes("aws") || text.includes("s3") || text.includes("iam") || text.includes("assumerole") || text.includes("tls connection") || a.sourceSystem === "CloudTrail";
+});
+
+const shadowLockCorrelation = correlateAlerts(shadowLockAlerts);
+const arcticRiftCorrelation = correlateAlerts(arcticRiftAlerts);
+
+const countUniqueIocs = (alerts: SecurityAlert[]) => {
+  const iocValues = alerts.flatMap(a => a.iocs.map(ioc => ioc.value));
+  return new Set(iocValues).size;
+};
+
+const extractTTPsList = (alerts: SecurityAlert[]) => {
+  const ttps = alerts.flatMap(a => a.mitreTTPs || []).map(t => t.split(" ")[0]);
+  return Array.from(new Set(ttps));
+};
+
 export const mockCampaigns: AttackCampaign[] = [
   {
     id: "camp-001",
-    name: "ShadowLock Ransomware Deployment",
+    name: `${shadowLockCorrelation.campaignName} Ransomware Deployment`,
     threatActor: "Wizard Spider",
-    confidence: 89,
-    riskScore: 94,
+    confidence: shadowLockCorrelation.confidence,
+    riskScore: shadowLockCorrelation.score,
     status: "active",
     initialAccess: "Spearphishing Attachment",
     persistence: "PowerShell Backdoor Downloaded",
     lateralMovement: "Remote PowerShell (WinRM)",
     targetSector: "Logistics and Supply Chain",
     summary: "A ransomware deployment campaign targetting core logistics databases. It starts from a macro spearphishing email delivered to the CEO's executive assistant, expanding via OS credential harvesting from memory dumps, and moves laterally using SMB to compromise administrative servers to execute the Conti/Ryuk encrypter.",
-    aiExplanation: "Our correlation engine linked these 7 disparate events into shadowLock because:\n1. Chronological sequencing demonstrates file download (WS-CHLOE-LAPTOP) preceding DNS requests to 185.247.72.128 & LSASS dumped memory, leading to internal subnet ports tracking.\n2. Malicious binary hashes match patterns linked to Wizard Spider (Conti loaders) with 94% threat feed accuracy.\n3. Source telemetry shows administrative credential sharing used on 'PROD-LOGISTICS-VM' originates precisely from the compromised EDR-flagged assistant asset.",
+    aiExplanation: `Our correlation engine linked these ${shadowLockAlerts.length} disparate events into ShadowLock because:\n1. Chronological sequencing demonstrates: ${shadowLockCorrelation.timeline.join(" -> ")}.\n2. Detected attack pattern signature is evaluated as: ${shadowLockCorrelation.attackType}.\n3. Target entities compromised: ${Array.from(new Set(shadowLockAlerts.map(a => a.affectedAsset))).join(", ")}.`,
     recommendedActions: [
       "Quarantine host WS-CHLOE-LAPTOP immediately and isolate the backup domain administrator credential.",
       "Block traffic to foreign IP address 185.247.72.128 and blackhole domain security-update-service-microsoft.com in the DNS controller.",
       "Shut down WinRM remote access temporarily on critical production databases and rotate database administrator passwords.",
       "Kill process srvhost_enc.exe and deploy volume recovery options for PROD-LOGISTICS-VM."
     ],
-    alertsCount: 7,
-    iocsCount: 9,
-    createdAt: "2026-06-08T08:12:00Z",
-    ttps: ["T1566.001", "T1059.001", "T1071.001", "T1003.001", "T1046", "T1021.006", "T1486"]
+    alertsCount: shadowLockAlerts.length,
+    iocsCount: countUniqueIocs(shadowLockAlerts),
+    createdAt: shadowLockAlerts[0]?.timestamp || "2026-06-08T08:12:00Z",
+    ttps: extractTTPsList(shadowLockAlerts)
   },
   {
     id: "camp-002",
-    name: "Operation ArcticRift Cyber Espionage",
+    name: `${arcticRiftCorrelation.campaignName} Cyber Espionage`,
     threatActor: "Fancy Bear",
-    confidence: 76,
-    riskScore: 82,
+    confidence: arcticRiftCorrelation.confidence,
+    riskScore: arcticRiftCorrelation.score,
     status: "monitoring",
     initialAccess: "Compromised cloud egress application",
     persistence: "Stolen Cloud Access Keys",
     lateralMovement: "IAM Cross-Account Role Assumption",
     targetSector: "Defense Technology Blueprints",
     summary: "State-sponsored cyber threat aiming to steal blueprints using compromised cloud app egress channels, privilege climbing to acquire high-privilege AWS credentials, and bulk exfiltrating encrypted data packages to a rogue hosting node.",
-    aiExplanation: "Linked to Fancy Bear because:\n1. Overlapping command syntax and domain registrar details on 'secure-dns-route.net' are highly redundant with Fancy Bear's historical domain parking profiles.\n2. Use of specific TLS exfiltration methods over alternate HTTPS protocol mirrors TTPs documented in federal cyber advisories covering CozyBear/FancyBear targeting defense contractors.",
+    aiExplanation: `Linked to Operation ArcticRift because:\n1. Overlapping cloud environment markers and target host patterns in the timeline: ${arcticRiftCorrelation.timeline.join(" -> ")}.\n2. Potential exfiltration vector matching threat actor targets for sector: Defense Technology Blueprints.`,
     recommendedActions: [
       "Revoke IAM-Dev-Role-Assumed credentials and implement strict MFA on AWS Role requests.",
       "Apply CloudTrail automatic quarantine policies to isolate bucket vaults from unauthorized connections.",
       "Deploy Web Application Firewall rules to block payloads containing secure-dns-route.net urls."
     ],
-    alertsCount: 3,
-    iocsCount: 4,
-    createdAt: "2026-06-08T05:00:10Z",
-    ttps: ["T1071.001", "T1134", "T1048.003"]
+    alertsCount: arcticRiftAlerts.length,
+    iocsCount: countUniqueIocs(arcticRiftAlerts),
+    createdAt: arcticRiftAlerts[0]?.timestamp || "2026-06-08T05:00:10Z",
+    ttps: extractTTPsList(arcticRiftAlerts)
   }
 ];
+
 
 // Helper to convert alerts to relationship nodes & links
 export function generateGraphData(alerts: SecurityAlert[]): { nodes: GraphNode[]; links: GraphEdge[] } {
