@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type React from "react";
 import { Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 

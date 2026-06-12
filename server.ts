@@ -19,6 +19,10 @@ import {
   getLiveFeed
 } from "./graph/threatGraph";
 
+// V-module: Correlation Engine
+import { getAlertStore, addAlert, getAlertStats } from "./backend/alertStore";
+import { generateCampaigns } from "./backend/correlation/correlation_service";
+
 // Threat Intelligence module imports
 import threatIntelRouter from "./threat-intel/router";
 import { startIngestion } from "./threat-intel/ingestionService";
@@ -73,21 +77,28 @@ app.post("/api/ingest", (req, res) => {
     if (!logData || Object.keys(logData).length === 0) {
       return res.status(400).json({ error: "Empty log payload." });
     }
-    
+
     // Assign default structure
     const newLog = {
+      id: `ingest-${Date.now()}`,
       timestamp: logData.timestamp || new Date().toISOString(),
       sourceSystem: logData.sourceSystem || "API Webhook",
       severity: logData.severity || "MEDIUM",
       title: logData.title || "External System Alert",
       description: logData.description || JSON.stringify(logData),
-      iocs: logData.iocs || "N/A"
+      iocs: Array.isArray(logData.iocs) ? logData.iocs : [],
+      affectedAsset: logData.affectedAsset || "Unknown",
+      actionTaken: logData.actionTaken || "alerted",
+      mitreTTPs: logData.mitreTTPs || [],
     };
 
-    // Emit event to connected clients
+    // Feed into the correlation alert store so it affects campaign generation
+    addAlert(newLog as any);
+
+    // Emit event to connected SSE clients (Live Feed page)
     logEmitter.emit("new_log", newLog);
 
-    res.status(201).json({ status: "success", message: "Log ingested.", log: newLog });
+    res.status(201).json({ status: "success", message: "Log ingested and added to correlation store.", log: newLog });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -320,6 +331,60 @@ app.get("/api/live-feed", async (req, res) => {
     res.status(500).json({
       error: err.message
     });
+  }
+});
+
+// ─── V-Module: Real Correlation Engine Endpoints ────────────────────────────
+
+/**
+ * GET /api/v/campaigns
+ * Runs the full correlation pipeline on the alert store and returns
+ * dynamically generated AttackCampaign objects.
+ */
+app.get("/api/v/campaigns", (req, res) => {
+  try {
+    const alerts = getAlertStore();
+    const campaigns = generateCampaigns(alerts);
+    res.json(campaigns);
+  } catch (err: any) {
+    console.error("[V-Module] Campaign generation error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/v/alerts
+ * Returns all alerts currently in the correlation store as SecurityAlert[].
+ */
+app.get("/api/v/alerts", (req, res) => {
+  try {
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
+    const alerts = getAlertStore().slice(0, limit);
+    res.json(alerts);
+  } catch (err: any) {
+    console.error("[V-Module] Alert store fetch error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/v/stats
+ * Returns alert severity counts and system-level risk score derived from the store.
+ */
+app.get("/api/v/stats", (req, res) => {
+  try {
+    const alerts = getAlertStore();
+    const campaigns = generateCampaigns(alerts);
+    const severityCounts = getAlertStats();
+    const systemRiskScore = campaigns.length > 0 ? Math.max(...campaigns.map(c => c.riskScore)) : 0;
+    res.json({
+      totalAlerts: alerts.length,
+      activeCampaigns: campaigns.length,
+      systemRiskScore,
+      severityCounts,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

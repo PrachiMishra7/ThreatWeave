@@ -1,14 +1,15 @@
 import { useState } from "react";
-import { AlertTriangle, Layers, Activity, Users, Terminal } from "lucide-react";
-import { 
+import { AlertTriangle, Layers, Activity, Users, Terminal, RefreshCw } from "lucide-react";
+import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   PieChart, Pie, Cell
 } from "recharts";
 import { StatCard } from "../components/ui/StatCard";
 import { SeverityBadge } from "../components/ui/SeverityBadge";
-import { mockAlerts, mockCampaigns } from "../mockData";
+import { useCampaigns } from "../hooks/useCampaigns";
+import { useAlerts } from "../hooks/useAlerts";
 
-// Mock data for charts
+// Chart data (volume stays as time-series telemetry — not part of mock campaigns)
 const volumeData = [
   { time: '00:00', alerts: 12 }, { time: '04:00', alerts: 19 },
   { time: '08:00', alerts: 45 }, { time: '12:00', alerts: 82 },
@@ -16,60 +17,80 @@ const volumeData = [
   { time: '24:00', alerts: 15 }
 ];
 
-const severityData = [
-  { name: 'CRITICAL', value: 12, color: '#f43f5e' }, // rose-500
-  { name: 'HIGH', value: 45, color: '#f59e0b' },     // amber-500
-  { name: 'MEDIUM', value: 89, color: '#14b8a6' },   // teal-500
-  { name: 'LOW', value: 134, color: '#64748b' }      // slate-500
-];
+const SEVERITY_COLORS: Record<string, string> = {
+  CRITICAL: '#f43f5e',
+  HIGH: '#f59e0b',
+  MEDIUM: '#14b8a6',
+  LOW: '#64748b',
+};
+
+// Skeleton loader component
+function Skeleton({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse bg-slate-800 rounded ${className}`} />;
+}
 
 export default function Dashboard() {
-  const [activeCampaignId, setActiveCampaignId] = useState<string>(mockCampaigns[0].id);
-  
-  const activeCampaign = mockCampaigns.find(c => c.id === activeCampaignId) || mockCampaigns[0];
-  const recentAlerts = mockAlerts.slice(0, 8);
+  const { campaigns, loading: camLoading, error: camError, refresh } = useCampaigns();
+  const { alerts, loading: alertLoading } = useAlerts(8);
+
+  const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
+
+  // Derive the active campaign — use first by default once loaded
+  const activeCampaign = campaigns.find(c => c.id === (activeCampaignId ?? campaigns[0]?.id)) ?? campaigns[0];
+
+  // Derive severity distribution from live alerts
+  const severityData = Object.entries(
+    alerts.reduce<Record<string, number>>((acc, a) => {
+      const key = (a.severity as string).toUpperCase();
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 })
+  ).map(([name, value]) => ({ name, value, color: SEVERITY_COLORS[name] ?? '#64748b' }));
+
+  const totalAlerts = alerts.length;
+  const systemRiskScore = campaigns.length > 0 ? Math.max(...campaigns.map(c => c.riskScore)) : 0;
 
   return (
     <div className="flex flex-col gap-6">
-      
+
       {/* Top Stats Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard 
-          title="Total Alerts" 
-          value="1,284" 
-          icon={<AlertTriangle className="h-5 w-5" />} 
-          trend="12%" 
-          trendUp={false} 
-          glowColor="rose" 
+        <StatCard
+          title="Total Alerts"
+          value={alertLoading ? "—" : totalAlerts.toLocaleString()}
+          icon={<AlertTriangle className="h-5 w-5" />}
+          trend="12%"
+          trendUp={false}
+          glowColor="rose"
         />
-        <StatCard 
-          title="Active Campaigns" 
-          value={mockCampaigns.length} 
-          icon={<Layers className="h-5 w-5" />} 
-          trend="2" 
-          trendUp={true} 
-          glowColor="teal" 
+        <StatCard
+          title="Active Campaigns"
+          value={camLoading ? "—" : campaigns.length}
+          icon={<Layers className="h-5 w-5" />}
+          trend={String(campaigns.length)}
+          trendUp={true}
+          glowColor="teal"
         />
-        <StatCard 
-          title="System Risk Score" 
-          value="64" 
-          icon={<Activity className="h-5 w-5" />} 
-          trend="5%" 
-          trendUp={false} 
-          glowColor="amber" 
+        <StatCard
+          title="System Risk Score"
+          value={camLoading ? "—" : systemRiskScore}
+          icon={<Activity className="h-5 w-5" />}
+          trend="5%"
+          trendUp={false}
+          glowColor="amber"
         />
-        <StatCard 
-          title="Actors Tracked" 
-          value="14" 
-          icon={<Users className="h-5 w-5" />} 
-          glowColor="indigo" 
+        <StatCard
+          title="Actors Tracked"
+          value={camLoading ? "—" : new Set(campaigns.map(c => c.threatActor)).size}
+          icon={<Users className="h-5 w-5" />}
+          glowColor="indigo"
         />
       </div>
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Alert Volume Trend (Line Chart) */}
+
+        {/* Alert Volume Trend */}
         <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col h-[300px]">
           <h3 className="font-semibold text-sm text-slate-200 mb-4">Alert Volume (24h)</h3>
           <div className="flex-1 w-full min-h-0">
@@ -78,7 +99,7 @@ export default function Dashboard() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                 <XAxis dataKey="time" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
                 <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-                <RechartsTooltip 
+                <RechartsTooltip
                   contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc', borderRadius: '8px' }}
                   itemStyle={{ color: '#14b8a6' }}
                 />
@@ -88,14 +109,14 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Severity Distribution (Donut Chart) */}
+        {/* Severity Distribution */}
         <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col h-[300px]">
           <h3 className="font-semibold text-sm text-slate-200 mb-4">Alert Severity Distribution</h3>
           <div className="flex-1 w-full min-h-0 flex items-center justify-center relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={severityData}
+                  data={severityData.filter(d => d.value > 0)}
                   innerRadius={60}
                   outerRadius={80}
                   paddingAngle={5}
@@ -106,14 +127,13 @@ export default function Dashboard() {
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <RechartsTooltip 
+                <RechartsTooltip
                   contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc', borderRadius: '8px' }}
                 />
               </PieChart>
             </ResponsiveContainer>
-            {/* Center Label */}
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-2xl font-bold text-white">280</span>
+              <span className="text-2xl font-bold text-white">{alertLoading ? "—" : totalAlerts}</span>
               <span className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Total</span>
             </div>
           </div>
@@ -123,87 +143,118 @@ export default function Dashboard() {
 
       {/* Bottom Row: Campaigns & Details */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Left Column: Campaigns & Alert Feed */}
+
+        {/* Left: Active Campaigns Widget */}
         <div className="lg:col-span-1 flex flex-col gap-6">
-          
-          {/* Active Campaigns Widget */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl flex flex-col overflow-hidden h-[300px]">
             <div className="p-4 border-b border-slate-800 flex items-center justify-between">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <Layers className="h-4 w-4 text-teal-400" />
                 Active Campaigns
               </h3>
+              <button
+                onClick={refresh}
+                disabled={camLoading}
+                title="Refresh campaigns"
+                className="p-1 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-teal-400 disabled:opacity-40"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${camLoading ? 'animate-spin' : ''}`} />
+              </button>
             </div>
+
             <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1">
-              {mockCampaigns.map(camp => (
-                <button
-                  key={camp.id}
-                  onClick={() => setActiveCampaignId(camp.id)}
-                  className={`text-left p-3 rounded-lg border transition-all text-xs ${
-                    activeCampaignId === camp.id
-                      ? "bg-slate-800 border-teal-500/50 text-slate-200"
-                      : "bg-transparent border-transparent text-slate-400 hover:bg-slate-800/50"
-                  }`}
-                >
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-semibold truncate pr-2">{camp.name}</span>
-                    <span className={`font-mono px-1.5 py-0.5 rounded text-[10px] ${camp.riskScore > 85 ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-500'}`}>
-                      {camp.riskScore}%
-                    </span>
+              {camLoading ? (
+                Array.from({ length: 2 }).map((_, i) => (
+                  <div key={i} className="p-3 rounded-lg border border-slate-800 space-y-2">
+                    <Skeleton className="h-3 w-3/4" />
+                    <Skeleton className="h-2 w-1/2" />
                   </div>
-                  <div className="text-[10px] font-mono opacity-70">
-                    Actor: {camp.threatActor}
-                  </div>
-                </button>
-              ))}
+                ))
+              ) : camError ? (
+                <div className="p-3 text-xs text-rose-400 font-mono">{camError}</div>
+              ) : campaigns.length === 0 ? (
+                <div className="p-3 text-xs text-slate-500 text-center">No campaigns detected</div>
+              ) : (
+                campaigns.map(camp => (
+                  <button
+                    key={camp.id}
+                    onClick={() => setActiveCampaignId(camp.id)}
+                    className={`text-left p-3 rounded-lg border transition-all text-xs ${
+                      (activeCampaignId ?? campaigns[0]?.id) === camp.id
+                        ? "bg-slate-800 border-teal-500/50 text-slate-200"
+                        : "bg-transparent border-transparent text-slate-400 hover:bg-slate-800/50"
+                    }`}
+                  >
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-semibold truncate pr-2">{camp.name}</span>
+                      <span className={`font-mono px-1.5 py-0.5 rounded text-[10px] ${camp.riskScore > 85 ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-500'}`}>
+                        {camp.riskScore}%
+                      </span>
+                    </div>
+                    <div className="text-[10px] font-mono opacity-70">
+                      Actor: {camp.threatActor}
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
           </div>
-
         </div>
 
-        {/* Right Column: Campaign Details & Alerts */}
+        {/* Right: Campaign Details & Alerts */}
         <div className="lg:col-span-2 flex flex-col gap-6">
-          
+
           {/* Campaign Overview Widget */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg relative overflow-hidden">
             <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
               <Activity className="h-32 w-32" />
             </div>
-            
-            <div className="flex items-start justify-between relative z-10">
-              <div>
-                <span className="text-[10px] uppercase font-mono tracking-wider text-teal-500 mb-1 block">Selected Campaign Profile</span>
-                <h2 className="text-xl font-bold text-white mb-2">{activeCampaign.name}</h2>
-                <p className="text-sm text-slate-400 max-w-xl leading-relaxed">
-                  {activeCampaign.summary}
-                </p>
-              </div>
-            </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 border-t border-slate-800 pt-5 relative z-10">
-              <div>
-                <span className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">Target Sector</span>
-                <span className="text-xs font-mono text-slate-300">{activeCampaign.targetSector}</span>
+            {camLoading ? (
+              <div className="space-y-3 relative z-10">
+                <Skeleton className="h-3 w-40" />
+                <Skeleton className="h-6 w-64" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-3/4" />
               </div>
-              <div>
-                <span className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">Initial Access</span>
-                <span className="text-xs font-mono text-slate-300">{activeCampaign.initialAccess}</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">Persistence</span>
-                <span className="text-xs font-mono text-slate-300">{activeCampaign.persistence}</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">Confidence</span>
-                <span className="text-xs font-mono text-teal-400 font-bold">{activeCampaign.confidence}%</span>
-              </div>
-            </div>
+            ) : activeCampaign ? (
+              <>
+                <div className="flex items-start justify-between relative z-10">
+                  <div>
+                    <span className="text-[10px] uppercase font-mono tracking-wider text-teal-500 mb-1 block">Selected Campaign Profile</span>
+                    <h2 className="text-xl font-bold text-white mb-2">{activeCampaign.name}</h2>
+                    <p className="text-sm text-slate-400 max-w-xl leading-relaxed">
+                      {activeCampaign.summary}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 border-t border-slate-800 pt-5 relative z-10">
+                  <div>
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">Target Sector</span>
+                    <span className="text-xs font-mono text-slate-300">{activeCampaign.targetSector}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">Initial Access</span>
+                    <span className="text-xs font-mono text-slate-300">{activeCampaign.initialAccess}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">Persistence</span>
+                    <span className="text-xs font-mono text-slate-300">{activeCampaign.persistence}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">Confidence</span>
+                    <span className="text-xs font-mono text-teal-400 font-bold">{activeCampaign.confidence}%</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-slate-500 relative z-10">No campaign data available.</p>
+            )}
           </div>
 
-          {/* Live Alerts Feed preview */}
+          {/* Live Alerts Feed */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl flex flex-col overflow-hidden flex-1 min-h-[300px]">
-             <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <Terminal className="h-4 w-4 text-rose-400" />
                 Latest Incident Alerts
@@ -213,25 +264,36 @@ export default function Dashboard() {
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
               </span>
             </div>
-            
+
             <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-              {recentAlerts.map(alert => (
-                <div key={alert.id} className="p-3 bg-slate-950/50 border border-slate-800/80 rounded-lg hover:border-slate-700 transition-colors">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-mono text-slate-500">
-                      {new Date(alert.timestamp).toLocaleTimeString()}
-                    </span>
-                    <SeverityBadge severity={alert.severity} />
+              {alertLoading ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="p-3 bg-slate-950/50 border border-slate-800/80 rounded-lg space-y-2">
+                    <Skeleton className="h-2 w-24" />
+                    <Skeleton className="h-3 w-3/4" />
+                    <Skeleton className="h-2 w-full" />
                   </div>
-                  <h4 className="text-sm font-semibold text-slate-200">{alert.title}</h4>
-                  <p className="text-xs font-mono text-slate-400 mt-1 line-clamp-1">{alert.description}</p>
-                </div>
-              ))}
+                ))
+              ) : alerts.length === 0 ? (
+                <div className="text-xs text-slate-500 text-center py-8">No alerts in store</div>
+              ) : (
+                alerts.slice(0, 8).map(alert => (
+                  <div key={alert.id} className="p-3 bg-slate-950/50 border border-slate-800/80 rounded-lg hover:border-slate-700 transition-colors">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-mono text-slate-500">
+                        {new Date(alert.timestamp).toLocaleTimeString()}
+                      </span>
+                      <SeverityBadge severity={alert.severity} />
+                    </div>
+                    <h4 className="text-sm font-semibold text-slate-200">{alert.title}</h4>
+                    <p className="text-xs font-mono text-slate-400 mt-1 line-clamp-1">{alert.description}</p>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
         </div>
-
       </div>
     </div>
   );
