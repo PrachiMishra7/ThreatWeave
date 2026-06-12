@@ -15,6 +15,10 @@ import {
   getAlerts,
   getLiveFeed
 } from "./graph/threatGraph";
+
+// Threat Intelligence module imports
+import threatIntelRouter from "./threat-intel/router";
+import { startIngestion } from "./threat-intel/ingestionService";
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
 
@@ -285,6 +289,9 @@ app.get("/api/live-feed", async (req, res) => {
   }
 });
 
+// Mount Threat Intelligence API router
+app.use("/api/threat-intel", threatIntelRouter);
+
 // Configure Vite middleware or Static files
 async function initServer() {
   if (process.env.NODE_ENV !== "production") {
@@ -303,6 +310,10 @@ async function initServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`ThreatWeave server booting... listening at http://localhost:${PORT}`);
+
+    // Start the background threat intelligence ingestion service.
+    // Runs immediately on startup, then repeats every INGESTION_INTERVAL_HOURS (default: 6h).
+    startIngestion(logEmitter);
   });
 }
 
