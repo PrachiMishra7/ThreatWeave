@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useLocation } from "react-router-dom";
 import {
   Search,
   Hash,
@@ -342,6 +343,7 @@ export default function ThreatLookup() {
   const [stats, setStats] = useState<ThreatIntelStats | null>(null);
   const [statsError, setStatsError] = useState(false);
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
+  const location = useLocation();
 
   // Cycle through example queries in the placeholder
   useEffect(() => {
@@ -358,33 +360,45 @@ export default function ThreatLookup() {
       .catch(() => setStatsError(true));
   }, []);
 
-  const handleSearch = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      const trimmed = query.trim();
-      if (!trimmed) return;
+  const executeSearch = useCallback(async (searchQuery: string) => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return;
 
-      setIsLoading(true);
-      setHasSearched(true);
-      setError(null);
-      setResult(null);
+    setIsLoading(true);
+    setHasSearched(true);
+    setError(null);
+    setResult(null);
 
-      try {
-        const data = await lookupThreat(trimmed);
-        setResult(data);
+    try {
+      const data = await lookupThreat(trimmed);
+      setResult(data);
 
-        // Refresh stats after a successful lookup (may have added new indicator)
-        if (data.liveEnriched) {
-          getThreatIntelStats().then(setStats).catch(() => {});
-        }
-      } catch (err: any) {
-        setError(err.message || "An unexpected error occurred during lookup.");
-      } finally {
-        setIsLoading(false);
+      if (data.liveEnriched) {
+        getThreatIntelStats().then(setStats).catch(() => {});
       }
+    } catch (err: any) {
+      setError(err.message || "An unexpected error occurred during lookup.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const handleSearch = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      executeSearch(query);
     },
-    [query]
+    [query, executeSearch]
   );
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const q = params.get("q");
+    if (q) {
+      setQuery(q);
+      executeSearch(q);
+    }
+  }, [location.search, executeSearch]);
 
   return (
     <div className="flex flex-col gap-6 pb-10">
