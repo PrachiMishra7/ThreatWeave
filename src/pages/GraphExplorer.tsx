@@ -22,141 +22,302 @@ const nodeTypes = {
   ioc: IOCNode,
 };
 
-export default function GraphExplorer() {
-  const [selectedNodeData, setSelectedNodeData] = useState<any | null>(null);
-  const { campaigns, loading: camLoading, refresh } = useCampaigns();
-  const { alerts, loading: alertLoading } = useAlerts(20);
+// Helper functions for Neo4j Node/Edge conversion and layout styling
+function mapNeo4jLabelToReactFlowType(label: string) {
+  const l = label?.toLowerCase();
+  if (l === "campaign") return "campaign";
+  if (l === "alert") return "alert";
+  return "ioc";
+}
 
-  const loading = camLoading || alertLoading;
+function mapNeo4jLabelToSidebarType(label: string) {
+  const l = label?.toLowerCase();
+  if (l === "campaign") return "campaign";
+  if (l === "alert") return "alert";
+  return "ioc";
+}
 
-  // Derive nodes and edges from live API data
-  const { initialNodes, initialEdges } = useMemo(() => {
-    const nodes: Node[] = [];
-    const edges: Edge[] = [];
+function layoutGraph(rawNodes: any[], rawEdges: any[], campaigns: any[], alerts: any[]) {
+  const nodes = [...rawNodes];
+  const edges = [...rawEdges];
 
-    if (campaigns.length === 0 || alerts.length === 0) {
-      return { initialNodes: nodes, initialEdges: edges };
+  const nodeMap = new Map<string, any>();
+
+  const campaignsList = nodes.filter(n => n.type?.toLowerCase() === "campaign");
+
+  // Build adjacency list for layout computation
+  const adj = new Map<string, string[]>();
+  edges.forEach(e => {
+    if (!adj.has(e.source)) adj.set(e.source, []);
+    adj.get(e.source)!.push(e.target);
+    if (!adj.has(e.target)) adj.set(e.target, []);
+    adj.get(e.target)!.push(e.source);
+  });
+
+  nodes.forEach(n => {
+    const rfType = mapNeo4jLabelToReactFlowType(n.type);
+    const sidebarType = mapNeo4jLabelToSidebarType(n.type);
+
+    let fullData = { ...n.properties };
+    let label = n.label;
+    let actor = "Unknown";
+    let severity = "MEDIUM";
+
+    if (rfType === "campaign") {
+      const matchedCamp = campaigns.find((c: any) => c.name?.toLowerCase() === n.label?.toLowerCase());
+
+      const connectedActors = (adj.get(n.id) || [])
+        .map(id => nodes.find(node => node.id === id))
+        .filter((node): node is any => !!node && node.type?.toLowerCase() === "threatactor");
+
+      if (connectedActors.length > 0) {
+        actor = connectedActors[0].label;
+      } else if (matchedCamp && matchedCamp.threatActor) {
+        actor = matchedCamp.threatActor;
+      }
+
+      fullData = {
+        threatActor: actor,
+        riskScore: matchedCamp?.riskScore || Math.min(70 + (adj.get(n.id) || []).length * 5, 95),
+        confidence: matchedCamp?.confidence || 85,
+        summary: matchedCamp?.summary || `Threat campaign containing alerts parsed from correlation.`,
+        ...matchedCamp,
+        ...n.properties
+      };
+    } else if (rfType === "alert") {
+      const matchedAlert = alerts.find((a: any) => a.id === n.properties.id || a.title?.toLowerCase() === n.label?.toLowerCase());
+      severity = n.properties.severity || matchedAlert?.severity || "MEDIUM";
+
+      fullData = {
+        sourceSystem: n.properties.sourceSystem || matchedAlert?.sourceSystem || "SIEM",
+        description: n.properties.description || matchedAlert?.description || `Security alert: ${n.label}`,
+        affectedAsset: n.properties.affectedAsset || matchedAlert?.affectedAsset || "Internal Network",
+        mitreTTPs: matchedAlert?.mitreTTPs || [],
+        ...matchedAlert,
+        ...n.properties
+      };
+    } else if (rfType === "ioc") {
+      let iocType = n.type || "IOC";
+      if (n.type?.toLowerCase() === "mitretactic") {
+        iocType = "tactic";
+      } else if (n.type?.toLowerCase() === "threatactor") {
+        iocType = "actor";
+      }
+
+      fullData = {
+        value: n.properties.value || n.properties.name || n.label,
+        type: iocType,
+        ...n.properties
+      };
     }
 
-    // Use the highest-risk campaign as the center node
-    const activeCamp = campaigns[0];
-
-    // 1. Center Campaign Node
-    nodes.push({
-      id: `camp-${activeCamp.id}`,
-      type: "campaign",
-      position: { x: 400, y: 50 },
+    nodeMap.set(n.id, {
+      id: n.id,
+      type: rfType,
+      position: { x: 0, y: 0 },
       data: {
-        label: activeCamp.name,
-        actor: activeCamp.threatActor,
-        fullData: activeCamp,
-        nodeType: "campaign"
+        label,
+        actor,
+        severity,
+        iocType: n.type || "IOC",
+        fullData,
+        nodeType: sidebarType
+      }
+    });
+  });
+
+  const placedNodeIds = new Set<string>();
+
+  // 1. Layout Campaigns and their subtrees
+  const campaignSpacing = 600;
+  const startX = 200;
+
+  campaignsList.forEach((campNode, campIdx) => {
+    const campX = startX + campIdx * campaignSpacing;
+    const campY = 180;
+
+    const campFlow = nodeMap.get(campNode.id);
+    if (campFlow) {
+      campFlow.position = { x: campX, y: campY };
+      placedNodeIds.add(campNode.id);
+    }
+
+    // A. Threat Actors connected to this Campaign (above campaign)
+    const connectedActors = (adj.get(campNode.id) || [])
+      .map(id => nodeMap.get(id))
+      .filter((n): n is any => !!n && n.type === "ioc" && n.data.nodeType === "ioc" && n.data.iocType?.toLowerCase() === "threatactor");
+
+    connectedActors.forEach((actorFlow, actorIdx) => {
+      if (!placedNodeIds.has(actorFlow.id)) {
+        actorFlow.position = {
+          x: campX + (actorIdx - (connectedActors.length - 1) / 2) * 180,
+          y: 40
+        };
+        placedNodeIds.add(actorFlow.id);
       }
     });
 
-    // 2. Alert Nodes — take up to 5 alerts
-    const relatedAlerts = alerts.slice(0, 5);
-    relatedAlerts.forEach((alert, index) => {
-      const alertId = `alert-${alert.id}`;
-      const xPos = 80 + (index * 220);
+    // B. MITRE Tactics connected to this Campaign (left side of campaign)
+    const connectedTactics = (adj.get(campNode.id) || [])
+      .map(id => nodeMap.get(id))
+      .filter((n): n is any => !!n && n.type === "ioc" && n.data.nodeType === "ioc" && n.data.iocType?.toLowerCase() === "mitretactic");
 
-      nodes.push({
-        id: alertId,
-        type: "alert",
-        position: { x: xPos, y: 260 },
-        data: {
-          label: alert.title,
-          severity: alert.severity,
-          fullData: alert,
-          nodeType: "alert"
-        }
-      });
-
-      edges.push({
-        id: `edge-${activeCamp.id}-${alert.id}`,
-        source: `camp-${activeCamp.id}`,
-        target: alertId,
-        animated: true,
-        style: { stroke: '#14b8a6', strokeWidth: 2, strokeDasharray: '5,5' },
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#14b8a6' },
-      });
-
-      // 3. IOC Nodes for each alert (max 2 per alert to avoid overflow)
-      alert.iocs.slice(0, 2).forEach((ioc, iocIndex) => {
-        const iocId = `ioc-${ioc.type}-${ioc.value.replace(/[^a-zA-Z0-9]/g, "").substring(0, 20)}`;
-
-        if (!nodes.find(n => n.id === iocId)) {
-          nodes.push({
-            id: iocId,
-            type: "ioc",
-            position: { x: xPos - 40 + (iocIndex * 140), y: 460 },
-            data: {
-              label: ioc.value.length > 22 ? `${ioc.value.substring(0, 19)}...` : ioc.value,
-              iocType: ioc.type,
-              fullData: ioc,
-              nodeType: "ioc"
-            }
-          });
-        }
-
-        edges.push({
-          id: `edge-${alertId}-${iocId}-${iocIndex}`,
-          source: alertId,
-          target: iocId,
-          style: { stroke: '#475569', strokeWidth: 1.5 },
-        });
-      });
+    connectedTactics.forEach((tacticFlow, tacticIdx) => {
+      if (!placedNodeIds.has(tacticFlow.id)) {
+        tacticFlow.position = {
+          x: campX - 220,
+          y: campY - 50 + tacticIdx * 90
+        };
+        placedNodeIds.add(tacticFlow.id);
+      }
     });
 
-    // 4. If there's a second campaign, add it as a secondary node
-    if (campaigns.length > 1) {
-      const secondCamp = campaigns[1];
-      nodes.push({
-        id: `camp-${secondCamp.id}`,
-        type: "campaign",
-        position: { x: 850, y: 50 },
-        data: {
-          label: secondCamp.name,
-          actor: secondCamp.threatActor,
-          fullData: secondCamp,
-          nodeType: "campaign"
+    // C. Alerts connected to this Campaign (below campaign)
+    const campaignAlerts = (adj.get(campNode.id) || [])
+      .map(id => nodeMap.get(id))
+      .filter((n): n is any => !!n && n.type === "alert");
+
+    const alertSpacing = 240;
+
+    campaignAlerts.forEach((alertFlow, alertIdx) => {
+      const alertX = campX - ((campaignAlerts.length - 1) / 2) * alertSpacing + alertIdx * alertSpacing;
+      const alertY = 320;
+
+      if (!placedNodeIds.has(alertFlow.id)) {
+        alertFlow.position = { x: alertX, y: alertY };
+        placedNodeIds.add(alertFlow.id);
+      }
+
+      // D. IOCs connected to this Alert (below alert)
+      const alertIocs = (adj.get(alertFlow.id) || [])
+        .map(id => nodeMap.get(id))
+        .filter((n): n is any => !!n && n.type === "ioc" && n.data.iocType?.toLowerCase() !== "mitretactic" && n.data.iocType?.toLowerCase() !== "threatactor");
+
+      const iocSpacing = 160;
+
+      alertIocs.forEach((iocFlow, iocIdx) => {
+        if (!placedNodeIds.has(iocFlow.id)) {
+          iocFlow.position = {
+            x: alertX - ((alertIocs.length - 1) / 2) * iocSpacing + iocIdx * iocSpacing,
+            y: 480
+          };
+          placedNodeIds.add(iocFlow.id);
         }
       });
+    });
+  });
 
-      // Link a couple alerts to the second campaign too
-      alerts.slice(5, 8).forEach((alert, index) => {
-        const alertId = `alert2-${alert.id}`;
-        nodes.push({
-          id: alertId,
-          type: "alert",
-          position: { x: 700 + index * 200, y: 260 },
-          data: {
-            label: alert.title,
-            severity: alert.severity,
-            fullData: alert,
-            nodeType: "alert"
-          }
-        });
-        edges.push({
-          id: `edge2-${secondCamp.id}-${alert.id}`,
-          source: `camp-${secondCamp.id}`,
-          target: alertId,
-          animated: true,
-          style: { stroke: '#f59e0b', strokeWidth: 2, strokeDasharray: '5,5' },
-          markerEnd: { type: MarkerType.ArrowClosed, color: '#f59e0b' },
-        });
-      });
+  // 2. Place any remaining nodes that weren't reached by the campaign tree
+  const remainingNodes = Array.from(nodeMap.values()).filter(n => !placedNodeIds.has(n.id));
+  const cols = 5;
+  const remSpacingX = 220;
+  const remSpacingY = 120;
+  const remStartX = 100;
+  const remStartY = 620;
+
+  remainingNodes.forEach((flowNode, idx) => {
+    const row = Math.floor(idx / cols);
+    const col = idx % cols;
+    flowNode.position = {
+      x: remStartX + col * remSpacingX,
+      y: remStartY + row * remSpacingY
+    };
+    placedNodeIds.add(flowNode.id);
+  });
+
+  const reactFlowNodes = Array.from(nodeMap.values());
+
+  const reactFlowEdges = edges.map(e => {
+    const edgeType = e.label || "";
+    let style: any = { stroke: '#475569', strokeWidth: 1.5 };
+    let animated = false;
+    let markerEnd: any = undefined;
+
+    if (edgeType === "CONTAINS") {
+      style = { stroke: '#14b8a6', strokeWidth: 2 };
+      animated = true;
+      markerEnd = { type: MarkerType.ArrowClosed, color: '#14b8a6' };
+    } else if (edgeType === "USES_TACTIC") {
+      style = { stroke: '#f43f5e', strokeWidth: 1.5, strokeDasharray: '3,3' };
+      markerEnd = { type: MarkerType.ArrowClosed, color: '#f43f5e' };
+    } else if (edgeType === "ATTRIBUTED_TO") {
+      style = { stroke: '#a855f7', strokeWidth: 2 };
+      markerEnd = { type: MarkerType.ArrowClosed, color: '#a855f7' };
+    } else if (edgeType === "CORRELATES_TO") {
+      style = { stroke: '#f59e0b', strokeWidth: 2, strokeDasharray: '5,5' };
+      animated = true;
+      markerEnd = { type: MarkerType.ArrowClosed, color: '#f59e0b' };
     }
 
-    return { initialNodes: nodes, initialEdges: edges };
-  }, [campaigns, alerts]);
+    return {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      label: e.label,
+      style,
+      animated,
+      markerEnd
+    };
+  });
+
+  return { reactFlowNodes, reactFlowEdges };
+}
+
+export default function GraphExplorer() {
+  const [selectedNodeData, setSelectedNodeData] = useState<any | null>(null);
+  const { campaigns, loading: camLoading, refresh: refreshCampaigns } = useCampaigns();
+  const { alerts, loading: alertLoading } = useAlerts(100);
+
+  const [graphData, setGraphData] = useState<{ nodes: any[]; edges: any[] }>({ nodes: [], edges: [] });
+  const [graphLoading, setGraphLoading] = useState(true);
+  const [graphError, setGraphError] = useState<string | null>(null);
+
+  const fetchGraph = useCallback(async () => {
+    setGraphLoading(true);
+    setGraphError(null);
+    try {
+      const res = await fetch("/api/graph");
+      if (!res.ok) throw new Error("Failed to fetch Neo4j graph data");
+      const data = await res.json();
+      setGraphData(data);
+    } catch (err: any) {
+      setGraphError(err.message || "Failed to load Neo4j graph");
+    } finally {
+      setGraphLoading(false);
+    }
+  }, []);
+
+  const refresh = useCallback(async () => {
+    refreshCampaigns();
+    await fetchGraph();
+  }, [refreshCampaigns, fetchGraph]);
+
+  useEffect(() => {
+    fetchGraph();
+  }, [fetchGraph]);
+
+  const loading = camLoading || alertLoading || graphLoading;
+
+  const { initialNodes, initialEdges } = useMemo(() => {
+    if (!graphData.nodes || graphData.nodes.length === 0) {
+      return { initialNodes: [], initialEdges: [] };
+    }
+
+    // Deduplicate edges to prevent warnings
+    const uniqueEdges = new Map<string, any>();
+    graphData.edges.forEach((e: any) => {
+      uniqueEdges.set(`${e.source}-${e.target}-${e.label}`, e);
+    });
+    const dedupedEdges = Array.from(uniqueEdges.values());
+
+    const { reactFlowNodes, reactFlowEdges } = layoutGraph(graphData.nodes, dedupedEdges, campaigns, alerts);
+    return { initialNodes: reactFlowNodes, initialEdges: reactFlowEdges };
+  }, [graphData, campaigns, alerts]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
   // Sync computed nodes/edges into ReactFlow state whenever API data arrives.
-  // useNodesState/useEdgesState only use their constructor arg once (like useState),
-  // so we must explicitly push updates when useMemo recomputes after async load.
   useEffect(() => {
     setNodes(initialNodes);
     setEdges(initialEdges);
@@ -165,7 +326,6 @@ export default function GraphExplorer() {
   const onNodeClick = useCallback((_: any, node: Node) => {
     setSelectedNodeData(node.data);
   }, []);
-
 
   return (
     <div className="flex h-[calc(100vh-8rem)] gap-4">
@@ -308,10 +468,12 @@ export default function GraphExplorer() {
                   <p className="text-xs text-slate-500 font-mono mb-1">Value</p>
                   <p className="text-xs font-mono text-slate-300 break-all">{selectedNodeData.fullData.value}</p>
                 </div>
-                <button className="mt-2 w-full py-2 bg-slate-800 hover:bg-slate-700 transition-colors border border-slate-700 rounded-lg text-xs font-semibold text-slate-300 flex items-center justify-center gap-2">
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Run External Lookup
-                </button>
+                {selectedNodeData.iocType?.toLowerCase() !== "mitretactic" && selectedNodeData.iocType?.toLowerCase() !== "threatactor" && (
+                  <button className="mt-2 w-full py-2 bg-slate-800 hover:bg-slate-700 transition-colors border border-slate-700 rounded-lg text-xs font-semibold text-slate-300 flex items-center justify-center gap-2">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Run External Lookup
+                  </button>
+                )}
               </>
             )}
           </div>
