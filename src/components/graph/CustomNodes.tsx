@@ -59,6 +59,16 @@ export function IOCNode({ data }: NodeProps) {
     color = "text-amber-400";
     bg = "bg-amber-500/10";
     border = "border-amber-500/30";
+  } else if (type === "mitretactic" || type === "tactic") {
+    Icon = ShieldAlert;
+    color = "text-rose-400";
+    bg = "bg-rose-500/10";
+    border = "border-rose-500/30";
+  } else if (type === "threatactor" || type === "actor") {
+    Icon = User;
+    color = "text-purple-400";
+    bg = "bg-purple-500/10";
+    border = "border-purple-500/30";
   }
 
   return (
