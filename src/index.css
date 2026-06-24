@@ -1,1 +1,78 @@
 @import "tailwindcss";
+
+@layer base {
+  body {
+    @apply bg-slate-950 text-slate-300;
+    /* Subtle dot-grid background for a tactical/command-center feel */
+    background-image: radial-gradient(#334155 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-attachment: fixed;
+  }
+
+  /* Custom sleek scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-slate-950/50;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-teal-500/50 rounded-full transition-colors;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-teal-400;
+  }
+}
+
+@layer utilities {
+  /* Glowing box shadow utilities */
+  .glow-teal {
+    box-shadow: 0 0 15px 2px rgba(20, 184, 166, 0.2);
+  }
+  .glow-indigo {
+    box-shadow: 0 0 15px 2px rgba(99, 102, 241, 0.2);
+  }
+  .glow-red {
+    box-shadow: 0 0 15px 2px rgba(244, 63, 94, 0.2);
+  }
+  
+  /* Glassmorphism utility */
+  .glass {
+    @apply bg-slate-900/60 backdrop-blur-xl border border-slate-700/50;
+  }
+
+  /* Scanning line overlay */
+  .scanline {
+    position: relative;
+    overflow: hidden;
+  }
+  .scanline::after {
+    content: " ";
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    z-index: 50;
+    background-size: 100% 2px, 3px 100%;
+    pointer-events: none;
+    animation: scroll 10s linear infinite;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.02); }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes scroll {
+  0% { background-position: 0 0; }
+  100% { background-position: 0 100%; }
+}

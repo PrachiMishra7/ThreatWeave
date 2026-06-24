@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { motion } from "motion/react";
 import { 
   Shield, 
   Activity, 
@@ -21,14 +22,19 @@ const navItems = [
 
 export default function Sidebar() {
   return (
-    <aside className="w-64 bg-slate-950 border-r border-slate-800 flex flex-col h-screen sticky top-0">
+    <aside className="w-64 glass flex flex-col h-screen sticky top-0 border-r-slate-800/60 z-20">
       {/* Brand */}
-      <div className="h-16 flex items-center px-6 border-b border-slate-800">
-        <div className="h-8 w-8 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-lg flex items-center justify-center shadow-lg shadow-teal-500/10 mr-3">
+      <div className="h-16 flex items-center px-6 border-b border-slate-800/60">
+        <motion.div 
+          initial={{ rotate: -90, scale: 0 }}
+          animate={{ rotate: 0, scale: 1 }}
+          transition={{ type: "spring", stiffness: 200, damping: 10 }}
+          className="h-8 w-8 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-lg flex items-center justify-center glow-teal mr-3"
+        >
           <Shield className="h-4 w-4 text-slate-900 stroke-[2.5]" />
-        </div>
+        </motion.div>
         <div>
-          <span className="font-semibold text-white tracking-tight">ThreatWeave</span>
+          <span className="font-bold text-white tracking-tight drop-shadow-md">ThreatWeave</span>
         </div>
       </div>
 
@@ -40,15 +46,30 @@ export default function Sidebar() {
             to={item.path}
             className={({ isActive }) =>
               cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors font-medium",
+                "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-300 font-medium overflow-hidden",
                 isActive 
-                  ? "bg-slate-900 text-teal-400" 
-                  : "text-slate-400 hover:bg-slate-900/50 hover:text-slate-200"
+                  ? "text-teal-400 bg-slate-800/40 glow-teal border border-teal-500/20" 
+                  : "text-slate-400 hover:bg-slate-800/30 hover:text-slate-200"
               )
             }
           >
-            <item.icon className="h-4 w-4" />
-            {item.label}
+            {({ isActive }) => (
+              <>
+                {isActive && (
+                  <motion.div 
+                    layoutId="activeNavIndicator"
+                    className="absolute left-0 top-0 bottom-0 w-1 bg-teal-500 shadow-[0_0_10px_rgba(20,184,166,0.8)]"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                  />
+                )}
+                <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}>
+                  <item.icon className={cn("h-4 w-4 transition-colors", isActive ? "text-teal-400" : "text-slate-500 group-hover:text-teal-500")} />
+                </motion.div>
+                <span className="relative z-10">{item.label}</span>
+              </>
+            )}
           </NavLink>
         ))}
       </div>

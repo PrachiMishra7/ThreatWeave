@@ -2,10 +2,19 @@ import { useState } from "react";
 import type React from "react";
 import { Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useCampaigns } from "../../hooks/useCampaigns";
 
 export default function Header() {
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
+  const { campaigns } = useCampaigns();
+
+  // Calculate system risk score
+  const systemRiskScore = campaigns.length > 0 ? Math.max(...campaigns.map(c => c.riskScore)) : 0;
+  
+  // Determine color based on risk severity
+  const riskColorClass = systemRiskScore > 85 ? "bg-red-500" : systemRiskScore > 50 ? "bg-amber-500" : "bg-teal-500";
+  const textColorClass = systemRiskScore > 85 ? "text-red-500" : systemRiskScore > 50 ? "text-amber-500" : "text-teal-500";
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -15,7 +24,7 @@ export default function Header() {
   };
 
   return (
-    <header className="h-16 border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-40 px-6 flex items-center justify-between">
+    <header className="h-16 border-b glass sticky top-0 z-40 px-6 flex items-center justify-between border-slate-800/60">
       {/* Global Search */}
       <div className="flex-1 max-w-xl">
         <form onSubmit={handleSearch} className="relative">
@@ -34,9 +43,9 @@ export default function Header() {
       <div className="flex items-center gap-4 ml-4">
         {/* Risk Score Indicator */}
         <div className="hidden md:flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-full border border-slate-800">
-          <div className="h-2 w-2 rounded-full bg-amber-500"></div>
+          <div className={`h-2 w-2 rounded-full ${riskColorClass}`}></div>
           <span className="text-xs font-mono text-slate-300">
-            System Risk: <span className="text-amber-500 font-bold">64</span>/100
+            System Risk: <span className={`${textColorClass} font-bold`}>{systemRiskScore}</span>/100
           </span>
         </div>
       </div>

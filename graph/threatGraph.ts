@@ -432,3 +432,44 @@ export async function getLiveFeed() {
     await session.close();
   }
 }
+
+export async function executeCypherQuery(query: string) {
+  const session = driver.session();
+  try {
+    const result = await session.run(query);
+    const nodes: any[] = [];
+    const edges: any[] = [];
+    
+    result.records.forEach((record) => {
+      record.keys.forEach((key) => {
+        const item = record.get(key);
+        if (!item) return;
+
+        // Determine if node or edge based on Neo4j driver types
+        if (item.labels) {
+          nodes.push({
+            id: item.elementId || item.identity?.toString() || Math.random().toString(),
+            label: item.properties.name || item.properties.title || item.properties.value || item.labels[0],
+            type: item.labels[0],
+            properties: item.properties
+          });
+        } else if (item.type) {
+          edges.push({
+            id: item.elementId || item.identity?.toString() || Math.random().toString(),
+            source: item.startNodeElementId || item.start?.toString(),
+            target: item.endNodeElementId || item.end?.toString(),
+            label: item.type,
+            properties: item.properties
+          });
+        }
+      });
+    });
+
+    const uniqueNodes = Array.from(new Map(nodes.map(n => [n.id, n])).values());
+    const uniqueEdges = Array.from(new Map(edges.map(e => [e.id, e])).values());
+
+    return { nodes: uniqueNodes, edges: uniqueEdges };
+  } finally {
+    await session.close();
+  }
+}
