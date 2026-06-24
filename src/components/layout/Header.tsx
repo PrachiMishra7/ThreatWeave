@@ -1,13 +1,15 @@
 import { useState } from "react";
 import type React from "react";
-import { Search } from "lucide-react";
+import { Search, Sun, Moon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useCampaigns } from "../../hooks/useCampaigns";
+import { useTheme } from "../../context/ThemeContext";
 
 export default function Header() {
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
   const { campaigns } = useCampaigns();
+  const { theme, toggleTheme } = useTheme();
 
   // Calculate system risk score
   const systemRiskScore = campaigns.length > 0 ? Math.max(...campaigns.map(c => c.riskScore)) : 0;
@@ -48,6 +50,15 @@ export default function Header() {
             System Risk: <span className={`${textColorClass} font-bold`}>{systemRiskScore}</span>/100
           </span>
         </div>
+
+        {/* Theme Toggle */}
+        <button
+          onClick={toggleTheme}
+          className="p-2 rounded-full bg-slate-950 border border-slate-800 text-slate-400 hover:text-teal-400 hover:border-teal-500/50 transition-colors"
+          title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+        >
+          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </button>
       </div>
     </header>
   );

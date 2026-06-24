@@ -12,9 +12,9 @@ import {
 import '@xyflow/react/dist/style.css';
 import { CampaignNode, AlertNode, IOCNode } from "../components/graph/CustomNodes";
 import { X, ExternalLink, Network, RefreshCw, Loader2, Play, TerminalSquare } from "lucide-react";
-import { SeverityBadge } from "../components/ui/SeverityBadge";
 import { useCampaigns } from "../hooks/useCampaigns";
 import { useAlerts } from "../hooks/useAlerts";
+import { useTheme } from "../context/ThemeContext";
 
 const nodeTypes = {
   campaign: CampaignNode,
@@ -267,6 +267,7 @@ export default function GraphExplorer() {
   const [selectedNodeData, setSelectedNodeData] = useState<any | null>(null);
   const { campaigns, loading: camLoading, refresh: refreshCampaigns } = useCampaigns();
   const { alerts, loading: alertLoading } = useAlerts(100);
+  const { theme } = useTheme();
 
   const [graphData, setGraphData] = useState<{ nodes: any[]; edges: any[] }>({ nodes: [], edges: [] });
   const [graphLoading, setGraphLoading] = useState(true);
@@ -373,7 +374,7 @@ export default function GraphExplorer() {
     <div className="flex h-[calc(100vh-8rem)] gap-4">
 
       {/* Graph Canvas */}
-      <div className="flex-1 glass glow-teal rounded-xl overflow-hidden relative scanline">
+      <div className="flex-1 glass glow-teal rounded-xl overflow-hidden relative">
 
         <div className="absolute top-4 left-4 z-10 pointer-events-none">
           <h2 className="text-xl font-bold text-white flex items-center gap-2 drop-shadow-md">
@@ -481,10 +482,9 @@ export default function GraphExplorer() {
             onNodeClick={onNodeClick}
             nodeTypes={nodeTypes}
             fitView
-            className="bg-slate-950"
             minZoom={0.2}
           >
-            <Background color="#334155" gap={24} size={2} />
+            <Background color={theme === 'dark' ? "#334155" : "#cbd5e1"} gap={24} size={2} />
             <Controls className="bg-slate-900 border-slate-700 fill-white" />
           </ReactFlow>
         )}

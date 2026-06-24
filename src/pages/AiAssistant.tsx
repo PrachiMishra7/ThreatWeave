@@ -110,13 +110,20 @@ export default function AiAssistant() {
                     {msg.role === 'user' ? <User className="h-4 w-4 text-slate-300" /> : <Cpu className="h-4.5 w-4.5 text-indigo-300" />}
                   </div>
                   
-                  <div className={`p-4 rounded-2xl shadow-md ${
-                    msg.role === 'user' 
-                      ? 'bg-slate-800/90 border border-slate-700/80 text-slate-200 rounded-tr-sm' 
-                      : 'bg-slate-900/80 border border-indigo-500/20 text-slate-300 rounded-tl-sm backdrop-blur-sm shadow-[0_4px_20px_-4px_rgba(0,0,0,0.3)]'
-                  }`}>
-                    <p className="text-[14.5px] leading-relaxed whitespace-pre-wrap font-medium">{msg.content}</p>
-                  </div>
+                    <div className={`p-4 rounded-2xl shadow-md ${
+                      msg.role === 'user' 
+                        ? 'bg-slate-800/90 border border-slate-700/80 text-slate-200 rounded-tr-sm' 
+                        : 'bg-slate-900/80 border border-indigo-500/20 text-slate-300 rounded-tl-sm backdrop-blur-sm shadow-[0_4px_20px_-4px_rgba(0,0,0,0.3)]'
+                    }`}>
+                      <p className="text-[14.5px] leading-relaxed whitespace-pre-wrap font-medium">
+                        {msg.content.split(/(\*\*.*?\*\*)/g).map((part, i) => {
+                          if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+                            return <strong key={i} className="font-bold text-white">{part.slice(2, -2)}</strong>;
+                          }
+                          return part;
+                        })}
+                      </p>
+                    </div>
                 </div>
               )}
             </motion.div>
