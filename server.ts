@@ -18,9 +18,11 @@ import {
   saveThreatGraph,
   getThreatGraph,
   getNodes,
+  getCampaigns,
   getCampaignByName,
   getAlerts,
   getLiveFeed,
+  getEnrichedNeo4jCampaigns,
   executeCypherQuery
 } from "./graph/threatGraph";
 
@@ -408,14 +410,54 @@ app.get("/api/live-feed", async (req, res) => {
 // ─── V-Module: Real Correlation Engine Endpoints ────────────────────────────
 
 /**
+ * Helper to fetch in-memory campaigns and Neo4j graph campaigns, and merge them.
+ */
+async function getMergedCampaigns(): Promise<any[]> {
+  const alerts = getAlertStore();
+  const inMemoryCampaigns = generateCampaigns(alerts);
+  
+  let neo4jCampaigns: any[] = [];
+  try {
+    neo4jCampaigns = await getEnrichedNeo4jCampaigns();
+  } catch (err: any) {
+    console.warn("[V-Module] Failed to fetch campaigns from Neo4j, using rule-based only:", err.message);
+  }
+
+  const mergedCampaigns = [...inMemoryCampaigns];
+  
+  for (const neoCamp of neo4jCampaigns) {
+    const existingIdx = mergedCampaigns.findIndex(
+      c => c.name.toLowerCase() === neoCamp.name.toLowerCase()
+    );
+    if (existingIdx >= 0) {
+      const existing = mergedCampaigns[existingIdx];
+      mergedCampaigns[existingIdx] = {
+        ...existing,
+        ...neoCamp,
+        riskScore: Math.max(existing.riskScore, neoCamp.riskScore),
+        confidence: Math.max(existing.confidence, neoCamp.confidence),
+        relatedAlertIds: Array.from(new Set([...existing.relatedAlertIds, ...neoCamp.relatedAlertIds])),
+        alertsCount: Math.max(existing.alertsCount, neoCamp.alertsCount),
+        iocsCount: Math.max(existing.iocsCount, neoCamp.iocsCount),
+        ttps: Array.from(new Set([...existing.ttps, ...neoCamp.ttps])),
+      };
+    } else {
+      mergedCampaigns.push(neoCamp);
+    }
+  }
+
+  // Sort by riskScore descending
+  return mergedCampaigns.sort((a, b) => b.riskScore - a.riskScore);
+}
+
+/**
  * GET /api/v/campaigns
  * Runs the full correlation pipeline on the alert store and returns
  * dynamically generated AttackCampaign objects.
  */
-app.get("/api/v/campaigns", (req, res) => {
+app.get("/api/v/campaigns", async (req, res) => {
   try {
-    const alerts = getAlertStore();
-    const campaigns = generateCampaigns(alerts);
+    const campaigns = await getMergedCampaigns();
     res.json(campaigns);
   } catch (err: any) {
     console.error("[V-Module] Campaign generation error:", err.message);
@@ -442,10 +484,10 @@ app.get("/api/v/alerts", (req, res) => {
  * GET /api/v/stats
  * Returns alert severity counts and system-level risk score derived from the store.
  */
-app.get("/api/v/stats", (req, res) => {
+app.get("/api/v/stats", async (req, res) => {
   try {
     const alerts = getAlertStore();
-    const campaigns = generateCampaigns(alerts);
+    const campaigns = await getMergedCampaigns();
     const severityCounts = getAlertStats();
     const systemRiskScore = campaigns.length > 0 ? Math.max(...campaigns.map(c => c.riskScore)) : 0;
     res.json({
