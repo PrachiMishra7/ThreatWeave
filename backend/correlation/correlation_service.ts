@@ -260,6 +260,7 @@ export function generateCampaigns(alerts: SecurityAlert[]): AttackCampaign[] {
       iocsCount: countUniqueIocs(groupAlerts),
       createdAt: sortedAlerts[0]?.timestamp || new Date().toISOString(),
       ttps: extractTTPsList(groupAlerts),
+      relatedAlertIds: groupAlerts.map(a => a.id),
     });
 
     index++;

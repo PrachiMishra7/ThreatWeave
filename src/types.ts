@@ -64,6 +64,7 @@ export interface AttackCampaign {
   iocsCount: number;
   createdAt: string;
   ttps: string[];
+  relatedAlertIds: string[];
 }
 
 export interface ThreatActor {

@@ -4,6 +4,11 @@ dotenv.config();
 // Bypass SSL certificate errors for local development (fixes UNABLE_TO_VERIFY_LEAF_SIGNATURE)
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
+// Patch BigInt serialization for Neo4j driver results
+(BigInt.prototype as any).toJSON = function () {
+  return this.toString();
+};
+
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -13,10 +18,10 @@ import {
   saveThreatGraph,
   getThreatGraph,
   getNodes,
-  getCampaigns,
   getCampaignByName,
   getAlerts,
-  getLiveFeed
+  getLiveFeed,
+  executeCypherQuery
 } from "./graph/threatGraph";
 
 // V-module: Correlation Engine
@@ -41,7 +46,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     console.error("JSON parsing error from client payload:", err.message);
     return res.status(400).json({ error: "Invalid JSON payload format. Please check your quotes/escaping." });
   }
-  next();
+  next(err);
 });
 
 // Helper to initialize Gemini safely
@@ -268,9 +273,75 @@ app.get("/api/graph", async (req, res) => {
     const graph = await getThreatGraph();
     res.json(graph);
   } catch (err: any) {
-    res.status(500).json({
-      error: err.message
+    console.error("Neo4j connection failed, dynamically generating graph from memory store.");
+    
+    const alerts = getAlertStore();
+    const campaigns = generateCampaigns(alerts);
+    
+    const nodes: any[] = [];
+    const edges: any[] = [];
+    let edgeIdCounter = 0;
+    
+    campaigns.forEach((camp, index) => {
+      // Add Campaign Node
+      nodes.push({ id: camp.id, label: camp.name, type: "Campaign", properties: { threatActor: camp.threatActor, riskScore: camp.riskScore, confidence: camp.confidence, summary: camp.summary } });
+      
+      // Add Threat Actor Node
+      const actorId = `actor-${camp.threatActor}`;
+      nodes.push({ id: actorId, label: camp.threatActor, type: "ThreatActor", properties: {} });
+      edges.push({ id: `e-${edgeIdCounter++}`, source: actorId, target: camp.id, label: "ATTRIBUTED_TO" });
+      
+      // Add Alert Nodes & link to Campaign
+      (camp.relatedAlertIds || []).forEach(alertId => {
+         const alert = alerts.find(a => a.id === alertId);
+         if (alert) {
+            nodes.push({ id: alert.id, label: alert.title, type: "Alert", properties: { id: alert.id, severity: alert.severity, sourceSystem: alert.sourceSystem, description: alert.description } });
+            edges.push({ id: `e-${edgeIdCounter++}`, source: camp.id, target: alert.id, label: "CONTAINS" });
+            
+            // Add IOCs & link to Alert
+            if (alert.iocs && Array.isArray(alert.iocs)) {
+               alert.iocs.forEach(ioc => {
+                  const iocId = `ioc-${ioc.value}`;
+                  nodes.push({ id: iocId, label: ioc.value, type: ioc.type || "UnknownIOC", properties: { value: ioc.value } });
+                  edges.push({ id: `e-${edgeIdCounter++}`, source: alert.id, target: iocId, label: "USES" });
+               });
+            }
+         }
+      });
     });
+    
+    // De-duplicate nodes
+    const uniqueNodes = Array.from(new Map(nodes.map(item => [item.id, item])).values());
+    
+    res.json({ nodes: uniqueNodes, edges });
+  }
+});
+
+app.post("/api/graph/query", async (req, res) => {
+  try {
+    const { query } = req.body;
+    if (!query) {
+      return res.status(400).json({ error: "Cypher query is required" });
+    }
+    const graphData = await executeCypherQuery(query);
+    res.json(graphData);
+  } catch (err: any) {
+    console.error("Custom query failed:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/graph/query", async (req, res) => {
+  try {
+    const { query } = req.body;
+    if (!query) {
+      return res.status(400).json({ error: "Cypher query is required" });
+    }
+    const graphData = await executeCypherQuery(query);
+    res.json(graphData);
+  } catch (err: any) {
+    console.error("Custom query failed:", err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

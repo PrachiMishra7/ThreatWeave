@@ -4,18 +4,46 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   PieChart, Pie, Cell
 } from "recharts";
+import { motion } from "motion/react";
 import { StatCard } from "../components/ui/StatCard";
 import { SeverityBadge } from "../components/ui/SeverityBadge";
 import { useCampaigns } from "../hooks/useCampaigns";
 import { useAlerts } from "../hooks/useAlerts";
 
-// Chart data (volume stays as time-series telemetry — not part of mock campaigns)
-const volumeData = [
-  { time: '00:00', alerts: 12 }, { time: '04:00', alerts: 19 },
-  { time: '08:00', alerts: 45 }, { time: '12:00', alerts: 82 },
-  { time: '16:00', alerts: 65 }, { time: '20:00', alerts: 30 },
-  { time: '24:00', alerts: 15 }
-];
+// Helper to compute volume data dynamically from alerts
+function computeVolumeData(alerts: any[]) {
+  if (!alerts || alerts.length === 0) {
+    return [
+      { time: '00:00', alerts: 0 }, { time: '04:00', alerts: 0 },
+      { time: '08:00', alerts: 0 }, { time: '12:00', alerts: 0 },
+      { time: '16:00', alerts: 0 }, { time: '20:00', alerts: 0 },
+      { time: '24:00', alerts: 0 }
+    ];
+  }
+  
+  // Create 6 buckets for the last 24 hours
+  const buckets = new Array(6).fill(0);
+  const now = new Date().getTime();
+  const bucketSize = 4 * 60 * 60 * 1000; // 4 hours in ms
+  
+  alerts.forEach(a => {
+    const timeDiff = now - new Date(a.timestamp).getTime();
+    if (timeDiff >= 0 && timeDiff <= 24 * 60 * 60 * 1000) {
+      const bucketIndex = Math.floor(timeDiff / bucketSize);
+      if (bucketIndex >= 0 && bucketIndex < 6) {
+        buckets[5 - bucketIndex]++; // Reverse so latest is at the end
+      }
+    }
+  });
+  
+  return buckets.map((count, i) => {
+    const date = new Date(now - (5 - i) * bucketSize);
+    return {
+      time: `${String(date.getHours()).padStart(2, '0')}:00`,
+      alerts: count
+    };
+  });
+}
 
 const SEVERITY_COLORS: Record<string, string> = {
   CRITICAL: '#f43f5e',
@@ -49,49 +77,77 @@ export default function Dashboard() {
 
   const totalAlerts = alerts.length;
   const systemRiskScore = campaigns.length > 0 ? Math.max(...campaigns.map(c => c.riskScore)) : 0;
+  
+  const volumeData = computeVolumeData(alerts);
+
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: 0.1 }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
+  };
 
   return (
-    <div className="flex flex-col gap-6">
+    <motion.div 
+      className="flex flex-col gap-6"
+      variants={containerVariants}
+      initial="hidden"
+      animate="show"
+    >
 
       {/* Top Stats Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Total Alerts"
-          value={alertLoading ? "—" : totalAlerts.toLocaleString()}
-          icon={<AlertTriangle className="h-5 w-5" />}
-          trend="12%"
-          trendUp={false}
-          glowColor="rose"
-        />
-        <StatCard
-          title="Active Campaigns"
-          value={camLoading ? "—" : campaigns.length}
-          icon={<Layers className="h-5 w-5" />}
-          trend={String(campaigns.length)}
-          trendUp={true}
-          glowColor="teal"
-        />
-        <StatCard
-          title="System Risk Score"
-          value={camLoading ? "—" : systemRiskScore}
-          icon={<Activity className="h-5 w-5" />}
-          trend="5%"
-          trendUp={false}
-          glowColor="amber"
-        />
-        <StatCard
-          title="Actors Tracked"
-          value={camLoading ? "—" : new Set(campaigns.map(c => c.threatActor)).size}
-          icon={<Users className="h-5 w-5" />}
-          glowColor="indigo"
-        />
+        <motion.div variants={itemVariants} whileHover={{ y: -5 }} className="transition-all hover:glow-rose rounded-xl">
+          <StatCard
+            title="Total Alerts"
+            value={alertLoading ? "—" : totalAlerts.toLocaleString()}
+            icon={<AlertTriangle className="h-5 w-5" />}
+            trend="12%"
+            trendUp={false}
+            glowColor="rose"
+          />
+        </motion.div>
+        <motion.div variants={itemVariants} whileHover={{ y: -5 }} className="transition-all hover:glow-teal rounded-xl">
+          <StatCard
+            title="Active Campaigns"
+            value={camLoading ? "—" : campaigns.length}
+            icon={<Layers className="h-5 w-5" />}
+            trend={String(campaigns.length)}
+            trendUp={true}
+            glowColor="teal"
+          />
+        </motion.div>
+        <motion.div variants={itemVariants} whileHover={{ y: -5 }} className="transition-all hover:glow-amber rounded-xl">
+          <StatCard
+            title="System Risk Score"
+            value={camLoading ? "—" : systemRiskScore}
+            icon={<Activity className="h-5 w-5" />}
+            trend="5%"
+            trendUp={false}
+            glowColor="amber"
+          />
+        </motion.div>
+        <motion.div variants={itemVariants} whileHover={{ y: -5 }} className="transition-all hover:glow-indigo rounded-xl">
+          <StatCard
+            title="Actors Tracked"
+            value={camLoading ? "—" : new Set(campaigns.map(c => c.threatActor)).size}
+            icon={<Users className="h-5 w-5" />}
+            glowColor="indigo"
+          />
+        </motion.div>
       </div>
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         {/* Alert Volume Trend */}
-        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col h-[300px]">
+        <motion.div variants={itemVariants} className="lg:col-span-2 glass rounded-xl p-5 flex flex-col h-[300px]">
           <h3 className="font-semibold text-sm text-slate-200 mb-4">Alert Volume (24h)</h3>
           <div className="flex-1 w-full min-h-0">
             <ResponsiveContainer width="100%" height="100%">
@@ -107,10 +163,10 @@ export default function Dashboard() {
               </LineChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        </motion.div>
 
         {/* Severity Distribution */}
-        <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col h-[300px]">
+        <motion.div variants={itemVariants} className="lg:col-span-1 glass rounded-xl p-5 flex flex-col h-[300px]">
           <h3 className="font-semibold text-sm text-slate-200 mb-4">Alert Severity Distribution</h3>
           <div className="flex-1 w-full min-h-0 flex items-center justify-center relative">
             <ResponsiveContainer width="100%" height="100%">
@@ -137,7 +193,7 @@ export default function Dashboard() {
               <span className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Total</span>
             </div>
           </div>
-        </div>
+        </motion.div>
 
       </div>
 
@@ -145,8 +201,8 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         {/* Left: Active Campaigns Widget */}
-        <div className="lg:col-span-1 flex flex-col gap-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl flex flex-col overflow-hidden h-[300px]">
+        <motion.div variants={itemVariants} className="lg:col-span-1 flex flex-col gap-6">
+          <div className="glass rounded-xl flex flex-col overflow-hidden h-[300px]">
             <div className="p-4 border-b border-slate-800 flex items-center justify-between">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <Layers className="h-4 w-4 text-teal-400" />
@@ -199,13 +255,14 @@ export default function Dashboard() {
               )}
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Right: Campaign Details & Alerts */}
-        <div className="lg:col-span-2 flex flex-col gap-6">
+        <motion.div variants={itemVariants} className="lg:col-span-2 flex flex-col gap-6">
 
           {/* Campaign Overview Widget */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg relative overflow-hidden">
+          <div className="glass rounded-xl p-5 shadow-lg relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-r from-teal-500/0 via-teal-500/5 to-teal-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 ease-in-out pointer-events-none"></div>
             <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
               <Activity className="h-32 w-32" />
             </div>
@@ -253,7 +310,7 @@ export default function Dashboard() {
           </div>
 
           {/* Live Alerts Feed */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl flex flex-col overflow-hidden flex-1 min-h-[300px]">
+          <div className="glass rounded-xl flex flex-col overflow-hidden flex-1 min-h-[300px]">
             <div className="p-4 border-b border-slate-800 flex items-center justify-between">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <Terminal className="h-4 w-4 text-rose-400" />
@@ -293,8 +350,8 @@ export default function Dashboard() {
             </div>
           </div>
 
-        </div>
+        </motion.div>
       </div>
-    </div>
+    </motion.div>
   );
 }
