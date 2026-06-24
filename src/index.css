@@ -1,6 +1,44 @@
 @import "tailwindcss";
 
 @layer base {
+  .light {
+    /* Map dark background slates to crisp whites and light grays */
+    --color-slate-950: #f8fafc; /* Body background */
+    --color-slate-900: #ffffff; /* Cards/Panels */
+    --color-slate-800: #e2e8f0; /* Borders/Subtle fills */
+    --color-slate-700: #cbd5e1; /* Stronger borders */
+    
+    /* Map text slates to high contrast dark slates */
+    --color-white: #0f172a;
+    --color-slate-50: #0f172a;
+    --color-slate-100: #1e293b;
+    --color-slate-200: #334155;
+    --color-slate-300: #475569;
+    --color-slate-400: #64748b;
+    --color-slate-500: #94a3b8;
+  }
+
+  .light body {
+    background-image: radial-gradient(#e2e8f0 1.5px, transparent 1.5px) !important;
+  }
+
+  .light .glass {
+    background-color: rgba(255, 255, 255, 0.85) !important;
+    border-color: rgba(203, 213, 225, 0.5) !important;
+    box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05), 0 4px 10px -2px rgba(0, 0, 0, 0.02) !important;
+  }
+
+  /* Convert neon glows into crisp shadows for light mode */
+  .light .glow-teal { box-shadow: 0 10px 25px -5px rgba(20, 184, 166, 0.2) !important; }
+  .light .glow-indigo { box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.2) !important; }
+  .light .glow-red { box-shadow: 0 10px 25px -5px rgba(244, 63, 94, 0.2) !important; }
+  .light .glow-amber { box-shadow: 0 10px 25px -5px rgba(245, 158, 11, 0.2) !important; }
+
+  /* Disable the heavy dark scanline in light mode */
+  .light .scanline::after {
+    display: none !important;
+  }
+
   body {
     @apply bg-slate-950 text-slate-300;
     /* Subtle dot-grid background for a tactical/command-center feel */
