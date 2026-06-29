@@ -214,6 +214,13 @@ let alertStore: SecurityAlert[] = [
   },
 ];
 
+// Shift mock alert timestamps to be within the last 24 hours so the Dashboard Volume chart renders data
+const nowMs = Date.now();
+alertStore.forEach((alert, index) => {
+  const shiftMs = (10 * 60 * 60 * 1000) - (index * 30 * 60 * 1000); // Spread across recent hours
+  alert.timestamp = new Date(nowMs - shiftMs).toISOString();
+});
+
 /** Returns a snapshot of all alerts currently in the store. */
 export function getAlertStore(): SecurityAlert[] {
   return [...alertStore];
